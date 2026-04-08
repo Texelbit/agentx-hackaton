@@ -1,0 +1,21 @@
+version: '3.9'
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+    container_name: sre-agent-backend
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    restart: unless-stopped
+
+# Postgres is provided by Supabase (external) — no local DB container needed.
+# pgvector must be enabled in Supabase via:
+#   CREATE EXTENSION IF NOT EXISTS vector;
+#
+# The codebase indexed for RAG is NOT mounted from the host. The init script
+# (`npm run init`) clones it into a temp folder, indexes it into pgvector and
+# deletes it. Run that BEFORE `docker compose up` so the embeddings exist.

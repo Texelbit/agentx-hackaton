@@ -137,3 +137,17 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# ── SRE Agent project-specific ──────────────────────────────
+# Reaction Commerce reference is no longer cloned into the repo —
+# `npm run init` clones it into the OS temp dir and deletes it after
+# indexing. This entry stays as a safety net in case anyone clones it
+# manually for debugging.
+ecommerce-ref/
+
+# JWT keypair
+keys/
+*.pem
+
+# Prisma
+apps/backend/prisma/migrations/dev.db*

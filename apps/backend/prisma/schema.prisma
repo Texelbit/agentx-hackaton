@@ -1,0 +1,446 @@
+// SRE Incident Response Agent — Prisma schema
+// All identifiers, enum values and seed strings are in English by convention.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────────────────────
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  ENGINEER
+  REPORTER
+}
+
+enum IncidentStatus {
+  BACKLOG
+  IN_PROGRESS
+  IN_REVIEW
+  READY_TO_TEST
+  DONE
+  CANCELLED
+}
+
+enum GithubEventType {
+  PUSH
+  PR_OPENED
+  PR_CLOSED
+  PR_REVIEW_APPROVED
+  PR_MERGED
+}
+
+enum NotificationChannel {
+  EMAIL
+  SLACK
+}
+
+enum NotificationEvent {
+  INCIDENT_CREATED
+  STATUS_IN_PROGRESS
+  STATUS_IN_REVIEW
+  STATUS_READY_TO_TEST
+  STATUS_DONE
+}
+
+enum AgentRole {
+  INTAKE_AGENT
+  TRIAGE_AGENT
+  EMAIL_COMPOSER
+  EMBEDDINGS
+}
+
+// Strategy class identifier — picks which `LlmStrategy` implementation to
+// instantiate at runtime. Stays as an enum because it maps 1:1 to a hard
+// list of code classes (`GeminiStrategy`, `OpenAIStrategy`, `AnthropicStrategy`).
+enum LlmProviderKind {
+  GEMINI
+  ANTHROPIC
+  OPENAI
+}
+
+enum IncidentLinkStatus {
+  SUGGESTED
+  CONFIRMED
+  REJECTED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  STATUS_CHANGE
+  LOGIN
+  WEBHOOK_SYNC
+}
+
+enum AuditActorType {
+  USER
+  SYSTEM
+  JIRA_WEBHOOK
+  GITHUB_WEBHOOK
+}
+
+enum ChatMessageRole {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum IndexingState {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUTH & RBAC
+// ─────────────────────────────────────────────────────────────────────────
+
+model RoleEntity {
+  id          String           @id @default(uuid())
+  name        Role             @unique
+  description String
+  permissions RolePermission[]
+  users       User[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  name        String           @unique
+  description String
+  roles       RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         RoleEntity @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id                      String                   @id @default(uuid())
+  email                   String                   @unique
+  passwordHash            String                   @map("password_hash")
+  fullName                String                   @map("full_name")
+  roleId                  String                   @map("role_id")
+  role                    RoleEntity               @relation(fields: [roleId], references: [id])
+  isActive                Boolean                  @default(true) @map("is_active")
+  isProtected             Boolean                  @default(false) @map("is_protected")
+  refreshTokens           RefreshToken[]
+  notificationPreferences NotificationPreference[]
+  reportedIncidents       Incident[]               @relation("Reporter")
+  chatSessions            ChatSession[]
+  auditLogs               AuditLog[]
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  updatedAt               DateTime                 @updatedAt @map("updated_at")
+
+  @@index([email])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String    @map("user_id")
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String    @map("token_hash")
+  expiresAt DateTime  @map("expires_at")
+  revoked   Boolean   @default(false)
+  revokedAt DateTime? @map("revoked_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// PRIORITIES & INCIDENTS
+// ─────────────────────────────────────────────────────────────────────────
+
+model Priority {
+  id          String     @id @default(uuid())
+  name        String     @unique
+  description String
+  level       Int        @unique
+  color       String
+  active      Boolean    @default(true)
+  incidents   Incident[]
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  @@map("priorities")
+}
+
+model Incident {
+  id              String                       @id @default(uuid())
+  title           String
+  description     String
+  status          IncidentStatus               @default(BACKLOG)
+  priorityId      String                       @map("priority_id")
+  priority        Priority                     @relation(fields: [priorityId], references: [id])
+  service         String
+  reporterId      String                       @map("reporter_id")
+  reporter        User                         @relation("Reporter", fields: [reporterId], references: [id])
+  reporterEmail   String                       @map("reporter_email")
+  jiraTicketKey   String?                      @map("jira_ticket_key")
+  jiraTicketUrl   String?                      @map("jira_ticket_url")
+  githubBranch    String?                      @map("github_branch")
+  githubPrUrl     String?                      @map("github_pr_url")
+  mergeCommitSha  String?                      @map("merge_commit_sha")
+  triageSummary   String?                      @map("triage_summary")
+  resolutionNotes String?                      @map("resolution_notes")
+  embedding       Unsupported("vector(1536)")?
+  attachments     IncidentAttachment[]
+  linksFrom       IncidentLink[]               @relation("LinkFrom")
+  linksTo         IncidentLink[]               @relation("LinkTo")
+  chatSessionId   String?                      @unique @map("chat_session_id")
+  chatSession     ChatSession?                 @relation(fields: [chatSessionId], references: [id])
+  createdAt       DateTime                     @default(now()) @map("created_at")
+  updatedAt       DateTime                     @updatedAt @map("updated_at")
+  resolvedAt      DateTime?                    @map("resolved_at")
+
+  @@index([status])
+  @@index([reporterId])
+  @@index([createdAt(sort: Desc)])
+  @@map("incidents")
+}
+
+model IncidentAttachment {
+  id         String   @id @default(uuid())
+  incidentId String   @map("incident_id")
+  incident   Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  url        String
+  mimeType   String   @map("mime_type")
+  uploadedBy String   @map("uploaded_by")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("incident_attachments")
+}
+
+model IncidentLink {
+  id         String             @id @default(uuid())
+  fromId     String             @map("from_id")
+  toId       String             @map("to_id")
+  status     IncidentLinkStatus @default(SUGGESTED)
+  similarity Float
+  from       Incident           @relation("LinkFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to         Incident           @relation("LinkTo", fields: [toId], references: [id], onDelete: Cascade)
+  createdAt  DateTime           @default(now()) @map("created_at")
+
+  @@unique([fromId, toId])
+  @@map("incident_links")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// CHAT
+// ─────────────────────────────────────────────────────────────────────────
+
+model ChatSession {
+  id        String        @id @default(uuid())
+  userId    String        @map("user_id")
+  user      User          @relation(fields: [userId], references: [id])
+  finalized Boolean       @default(false)
+  messages  ChatMessage[]
+  incident  Incident?
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@index([userId])
+  @@map("chat_sessions")
+}
+
+model ChatMessage {
+  id          String          @id @default(uuid())
+  sessionId   String          @map("session_id")
+  session     ChatSession     @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role        ChatMessageRole
+  content     String
+  attachments Json?
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  @@index([sessionId])
+  @@map("chat_messages")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// GITOPS / CONFIG
+// ─────────────────────────────────────────────────────────────────────────
+
+model BranchStateRule {
+  id           String          @id @default(uuid())
+  eventType    GithubEventType @map("event_type")
+  condition    Json            @default("{}")
+  targetStatus IncidentStatus  @map("target_status")
+  jiraStatusId String?         @map("jira_status_id")
+  priority     Int             @default(0)
+  active       Boolean         @default(true)
+  createdAt    DateTime        @default(now()) @map("created_at")
+
+  @@map("branch_state_rules")
+}
+
+model JiraStatusMapping {
+  id               String         @id @default(uuid())
+  internalStatus   IncidentStatus @unique @map("internal_status")
+  jiraStatusId     String         @map("jira_status_id")
+  jiraStatusName   String         @map("jira_status_name")
+  jiraTransitionId String?        @map("jira_transition_id")
+  syncedAt         DateTime       @default(now()) @map("synced_at")
+
+  @@map("jira_status_mappings")
+}
+
+model SystemConfig {
+  key         String   @id
+  value       String
+  description String
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
+
+/// A configurable LLM provider in the database. Distinct from
+/// `LlmProviderKind` (the enum) — multiple `LlmProvider` rows can share the
+/// same `kind` (e.g. two "OpenAI Production" + "OpenAI Sandbox" both with
+/// kind=OPENAI).
+///
+/// API keys do NOT live here. They stay in env vars (GEMINI_API_KEY,
+/// OPENAI_API_KEY, ANTHROPIC_API_KEY) and the LlmClientModule factory
+/// registers strategies based on which env keys are present.
+model LlmProvider {
+  id        String          @id @default(uuid())
+  name      String          @unique
+  kind      LlmProviderKind
+  active    Boolean         @default(true)
+  models    LlmModel[]
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+
+  @@map("llm_providers")
+}
+
+/// A specific model offered by a provider. `name` is the human label shown
+/// in the dashboard, `value` is the actual identifier the provider's API
+/// expects (e.g. "gemini-2.5-flash").
+model LlmModel {
+  id         String      @id @default(uuid())
+  providerId String      @map("provider_id")
+  provider   LlmProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  name       String
+  value      String
+  active     Boolean     @default(true)
+  configs    LlmConfig[]
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
+
+  @@unique([providerId, value])
+  @@map("llm_models")
+}
+
+/// Maps each agent role to a concrete LlmModel. Replaces the previous flat
+/// (provider, model) string columns with a proper FK so admins can swap
+/// models for an agent role from the dashboard with a single dropdown.
+model LlmConfig {
+  agentRole AgentRole @id @map("agent_role")
+  modelId   String    @map("model_id")
+  model     LlmModel  @relation(fields: [modelId], references: [id])
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("llm_configs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────
+
+model NotificationPreference {
+  id      String              @id @default(uuid())
+  userId  String              @map("user_id")
+  user    User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event   NotificationEvent
+  channel NotificationChannel
+  enabled Boolean             @default(true)
+
+  @@unique([userId, event, channel])
+  @@map("notification_preferences")
+}
+
+model NotificationLog {
+  id         String              @id @default(uuid())
+  incidentId String              @map("incident_id")
+  event      NotificationEvent
+  channel    NotificationChannel
+  recipient  String
+  sentAt     DateTime            @default(now()) @map("sent_at")
+
+  @@index([incidentId, event, channel, sentAt])
+  @@map("notification_logs")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// RAG
+// ─────────────────────────────────────────────────────────────────────────
+
+model RagDocument {
+  id         String                      @id @default(uuid())
+  collection String
+  source     String?
+  content    String
+  metadata   Json                        @default("{}")
+  embedding  Unsupported("vector(1536)")
+  createdAt  DateTime                    @default(now()) @map("created_at")
+
+  @@index([collection])
+  @@map("rag_documents")
+}
+
+model IndexingStatus {
+  id          String        @id @default(uuid())
+  collection  String        @unique
+  lastIndexed DateTime?     @map("last_indexed")
+  docCount    Int           @default(0) @map("doc_count")
+  status      IndexingState @default(PENDING)
+
+  @@map("indexing_status")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// AUDIT
+// ─────────────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String         @id @default(uuid())
+  actorType AuditActorType @map("actor_type")
+  actorId   String?        @map("actor_id")
+  user      User?          @relation(fields: [actorId], references: [id])
+  action    AuditAction
+  entity    String
+  entityId  String         @map("entity_id")
+  before    Json?
+  after     Json?
+  metadata  Json?
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  @@index([entity, entityId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

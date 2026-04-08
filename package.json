@@ -1,0 +1,29 @@
+{
+  "name": "sre-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AgentX Hackathon 2026 — SRE Incident Response Agent",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "init": "node scripts/init.mjs",
+    "build:packages": "npm run build --workspaces --if-present",
+    "build:shared-types": "npm run build --workspace=@sre/shared-types",
+    "dev:backend": "npm run start:dev --workspace=apps/backend",
+    "dev:dashboard": "npm run dev --workspace=@sre/dashboard-web",
+    "dev:report": "npm run dev --workspace=@sre/report-web",
+    "prisma:generate": "npm run prisma:generate --workspace=apps/backend",
+    "prisma:migrate": "npm run prisma:migrate --workspace=apps/backend",
+    "prisma:migrate:deploy": "npm run prisma:migrate:deploy --workspace=apps/backend",
+    "seed:bootstrap": "npm run seed:bootstrap --workspace=apps/backend",
+    "seed:jira": "npm run seed:jira --workspace=apps/backend",
+    "seed:github": "npm run seed:github --workspace=apps/backend",
+    "seed:indexer": "npm run seed:indexer --workspace=apps/backend"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
