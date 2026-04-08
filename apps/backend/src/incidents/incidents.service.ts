@@ -157,22 +157,24 @@ export class IncidentsService implements IIncidentFromChatCreator {
     });
 
     // 3. Embed + similarity search (run after persisting so the new incident
-    //    is excluded from its own neighbors)
+    //    is excluded from its own neighbors). The candidates list is hoisted
+    //    so the Jira-comment step below can use it without re-querying.
     const queryText = `${created.title}\n${created.description}`;
+    let similarCandidates: { incidentId: string; similarity: number }[] = [];
     try {
       await this.rag.embedIncident(created.id, queryText);
       const threshold = await this.systemConfig.getSimilarityThreshold();
-      const similar = await this.rag.searchSimilarIncidents(
+      similarCandidates = await this.rag.searchSimilarIncidents(
         queryText,
         threshold,
         5,
         created.id,
       );
-      if (similar.length > 0) {
-        await this.links.createSuggestions(created.id, similar);
+      if (similarCandidates.length > 0) {
+        await this.links.createSuggestions(created.id, similarCandidates);
         this.realtime?.emit('incident.link_suggested', {
           incidentId: created.id,
-          candidates: similar,
+          candidates: similarCandidates,
         });
       }
     } catch (err) {
@@ -233,6 +235,25 @@ export class IncidentsService implements IIncidentFromChatCreator {
       this.logger.error(
         `Jira ticket creation failed: ${(err as Error).message}`,
       );
+    }
+
+    // 6b. If we found similar incidents AND the Jira ticket exists, post a
+    //     comment listing them so engineers see the historical context
+    //     directly inside Jira (not only in the dashboard).
+    if (similarCandidates.length > 0 && withTriage.jiraTicketKey) {
+      try {
+        const commentBody = await this.buildSimilarIncidentsComment(
+          similarCandidates,
+        );
+        await this.jira.addComment(withTriage.jiraTicketKey, commentBody);
+        this.logger.log(
+          `Posted similar-incidents comment to ${withTriage.jiraTicketKey}`,
+        );
+      } catch (err) {
+        this.logger.warn(
+          `Failed to post similar-incidents comment to Jira: ${(err as Error).message}`,
+        );
+      }
     }
 
     // 7. Create GitHub branch (only if Jira succeeded — branch naming needs the key)
@@ -337,6 +358,48 @@ export class IncidentsService implements IIncidentFromChatCreator {
     } catch {
       return this.priorities.findByName('MEDIUM');
     }
+  }
+
+  /**
+   * Renders a plain-text comment listing similar past incidents for the
+   * Jira ticket. Uses the similarity score returned by pgvector + the
+   * peer incident's title, status and Jira key (joined per row).
+   *
+   * Output is plain text (not markdown) because Jira's ADF wrapper in
+   * `JiraService.toAdf` only supports paragraphs — bullet lists would
+   * need a richer ADF builder, which we keep for a future iteration.
+   */
+  private async buildSimilarIncidentsComment(
+    candidates: { incidentId: string; similarity: number }[],
+  ): Promise<string> {
+    const incidents = await Promise.all(
+      candidates.map((c) =>
+        this.repo.findById(c.incidentId).then((i) => ({ candidate: c, incident: i })),
+      ),
+    );
+
+    const lines: string[] = [
+      `🔍 SRE Agent found ${candidates.length} similar past incident(s) reported previously:`,
+      '',
+    ];
+
+    for (const { candidate, incident } of incidents) {
+      if (!incident) continue;
+      const similarityPct = (candidate.similarity * 100).toFixed(0);
+      const jiraRef = incident.jiraTicketKey
+        ? `${incident.jiraTicketKey}`
+        : '(no Jira link)';
+      lines.push(
+        `• [${similarityPct}% match] ${jiraRef} — "${incident.title}" (status: ${incident.status})`,
+      );
+    }
+
+    lines.push('');
+    lines.push(
+      'Review these from the SRE Agent dashboard to confirm or reject the link.',
+    );
+
+    return lines.join('\n');
   }
 
   private formatTriage(t: TriageOutput): string {

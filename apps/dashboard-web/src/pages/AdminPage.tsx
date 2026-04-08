@@ -1,14 +1,22 @@
 import { useQuery } from '@tanstack/react-query';
 import { PriorityDto, UserDto } from '@sre/shared-types';
 import { useState } from 'react';
+import { BranchRulesManager } from '../components/BranchRulesManager';
 import { LlmConfigManager } from '../components/LlmConfigManager';
 import { api } from '../lib/api';
 
-type Tab = 'users' | 'priorities' | 'system' | 'llm' | 'audit';
+type Tab =
+  | 'users'
+  | 'priorities'
+  | 'system'
+  | 'llm'
+  | 'branch-rules'
+  | 'audit';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'users', label: 'Users' },
   { id: 'priorities', label: 'Priorities' },
+  { id: 'branch-rules', label: 'GitOps rules' },
   { id: 'system', label: 'System config' },
   { id: 'llm', label: 'LLM config' },
   { id: 'audit', label: 'Audit log' },
@@ -40,6 +48,7 @@ export function AdminPage() {
       <div className="rounded-2xl bg-white p-6 shadow-sm">
         {tab === 'users' && <UsersTab />}
         {tab === 'priorities' && <PrioritiesTab />}
+        {tab === 'branch-rules' && <BranchRulesManager />}
         {tab === 'system' && <SystemConfigTab />}
         {tab === 'llm' && <LlmConfigTab />}
         {tab === 'audit' && <AuditTab />}

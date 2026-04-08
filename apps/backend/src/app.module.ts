@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { BranchRulesModule } from './branch-rules/branch-rules.module';
 import { ChatModule } from './chat/chat.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
@@ -44,6 +45,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
     RolesModule,
     JiraModule,
     GitHubModule,
+    BranchRulesModule,
     RagModule,
     RealtimeModule,
     NotificationsModule,

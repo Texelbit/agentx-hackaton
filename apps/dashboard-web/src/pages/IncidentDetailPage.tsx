@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   IncidentDto,
-  IncidentLinkDto,
   IncidentLinkStatus,
   IncidentStatus,
+  SimilarIncidentDto,
 } from '@sre/shared-types';
 import { Link, useParams } from 'react-router-dom';
 import { PriorityBadge, StatusBadge } from '../components/Badge';
@@ -13,8 +13,10 @@ function fetchIncident(id: string): Promise<IncidentDto> {
   return api.get<IncidentDto>(`/incidents/${id}`).then((r) => r.data);
 }
 
-function fetchSimilar(id: string): Promise<IncidentLinkDto[]> {
-  return api.get<IncidentLinkDto[]>(`/incidents/${id}/similar`).then((r) => r.data);
+function fetchSimilar(id: string): Promise<SimilarIncidentDto[]> {
+  return api
+    .get<SimilarIncidentDto[]>(`/incidents/${id}/similar`)
+    .then((r) => r.data);
 }
 
 export function IncidentDetailPage() {
@@ -93,46 +95,99 @@ export function IncidentDetailPage() {
 
           {similar && similar.length > 0 && (
             <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-2 text-sm font-semibold uppercase text-slate-500">
-                Similar incidents
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase text-slate-500">
+                <span>🔍 Similar past incidents</span>
+                <span className="rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                  {similar.length}
+                </span>
               </h2>
+              <p className="mb-3 text-xs text-slate-500">
+                These were detected via embedding similarity. Confirm or reject
+                each one to keep the knowledge base accurate.
+              </p>
               <ul className="space-y-2">
                 {similar.map((l) => (
                   <li
-                    key={l.id}
-                    className="flex items-center justify-between rounded-lg border border-slate-100 p-3"
+                    key={l.linkId}
+                    className="rounded-lg border border-slate-100 p-3 hover:border-indigo-200 hover:bg-indigo-50/30"
                   >
-                    <div>
-                      <Link
-                        to={`/incidents/${l.toId === id ? l.fromId : l.toId}`}
-                        className="text-sm text-indigo-600 hover:underline"
-                      >
-                        {l.toId === id ? l.fromId : l.toId}
-                      </Link>
-                      <div className="text-xs text-slate-500">
-                        similarity {l.similarity.toFixed(2)} · {l.status}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={`/incidents/${l.peerId}`}
+                            className="truncate text-sm font-medium text-indigo-600 hover:underline"
+                          >
+                            {l.peerTitle}
+                          </Link>
+                          <span className="shrink-0 rounded bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-800">
+                            {(l.similarity * 100).toFixed(0)}% match
+                          </span>
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                          <PriorityBadge name={l.peerPriorityName} />
+                          <StatusBadge status={l.peerStatus} />
+                          {l.peerJiraUrl && (
+                            <a
+                              href={l.peerJiraUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-indigo-600 hover:underline"
+                            >
+                              🎫 {l.peerJiraKey}
+                            </a>
+                          )}
+                          <span className="text-slate-400">
+                            {new Date(l.peerCreatedAt).toLocaleDateString()}
+                          </span>
+                          <span
+                            className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
+                            style={{
+                              backgroundColor:
+                                l.status === IncidentLinkStatus.CONFIRMED
+                                  ? '#d1fae5'
+                                  : l.status === IncidentLinkStatus.REJECTED
+                                    ? '#fee2e2'
+                                    : '#fef3c7',
+                              color:
+                                l.status === IncidentLinkStatus.CONFIRMED
+                                  ? '#065f46'
+                                  : l.status === IncidentLinkStatus.REJECTED
+                                    ? '#991b1b'
+                                    : '#92400e',
+                            }}
+                          >
+                            {l.status}
+                          </span>
+                        </div>
                       </div>
+                      {l.status === IncidentLinkStatus.SUGGESTED && (
+                        <div className="flex shrink-0 gap-1">
+                          <button
+                            onClick={() =>
+                              updateLink.mutate({
+                                linkId: l.linkId,
+                                status: 'CONFIRMED',
+                              })
+                            }
+                            className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700"
+                          >
+                            Confirm
+                          </button>
+                          <button
+                            onClick={() =>
+                              updateLink.mutate({
+                                linkId: l.linkId,
+                                status: 'REJECTED',
+                              })
+                            }
+                            className="rounded bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    {l.status === IncidentLinkStatus.SUGGESTED && (
-                      <div className="flex gap-1">
-                        <button
-                          onClick={() =>
-                            updateLink.mutate({ linkId: l.id, status: 'CONFIRMED' })
-                          }
-                          className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700"
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          onClick={() =>
-                            updateLink.mutate({ linkId: l.id, status: 'REJECTED' })
-                          }
-                          className="rounded bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    )}
                   </li>
                 ))}
               </ul>

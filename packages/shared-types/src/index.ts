@@ -22,6 +22,14 @@ export enum IncidentStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum GithubEventType {
+  PUSH = 'PUSH',
+  PR_OPENED = 'PR_OPENED',
+  PR_CLOSED = 'PR_CLOSED',
+  PR_REVIEW_APPROVED = 'PR_REVIEW_APPROVED',
+  PR_MERGED = 'PR_MERGED',
+}
+
 export enum NotificationChannel {
   EMAIL = 'EMAIL',
   SLACK = 'SLACK',
@@ -130,6 +138,24 @@ export interface IncidentLinkDto {
   similarity: number;
 }
 
+/**
+ * Enriched view of an incident link returned by `GET /incidents/:id/similar`.
+ * `peer*` fields are the OTHER side of the link from the requested incident's
+ * perspective.
+ */
+export interface SimilarIncidentDto {
+  linkId: string;
+  status: IncidentLinkStatus;
+  similarity: number;
+  peerId: string;
+  peerTitle: string;
+  peerStatus: IncidentStatus;
+  peerPriorityName: string;
+  peerJiraKey: string | null;
+  peerJiraUrl: string | null;
+  peerCreatedAt: string;
+}
+
 export interface ChatAttachment {
   mimeType: string;
   data: string;
@@ -209,4 +235,37 @@ export interface LlmAssignmentDto {
   providerId: string;
   providerName: string;
   providerKind: LlmProviderKind;
+}
+
+// ── Branch state rules (GitOps) ────────────────────────────────────────
+
+export interface BranchRuleConditionDto {
+  baseBranch?: string;
+  merged?: boolean;
+}
+
+export interface BranchRuleDto {
+  id: string;
+  eventType: GithubEventType;
+  condition: BranchRuleConditionDto;
+  targetStatus: IncidentStatus;
+  jiraStatusId: string | null;
+  priority: number;
+  active: boolean;
+}
+
+export interface CreateBranchRuleDto {
+  eventType: GithubEventType;
+  condition?: BranchRuleConditionDto;
+  targetStatus: IncidentStatus;
+  priority?: number;
+  active?: boolean;
+}
+
+export interface UpdateBranchRuleDto {
+  eventType?: GithubEventType;
+  condition?: BranchRuleConditionDto;
+  targetStatus?: IncidentStatus;
+  priority?: number;
+  active?: boolean;
 }

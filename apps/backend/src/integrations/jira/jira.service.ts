@@ -75,6 +75,25 @@ export class JiraService {
   }
 
   /**
+   * Posts a plain-text comment on the given issue. Used to surface useful
+   * automated context (e.g. "We found 3 similar past incidents") inside the
+   * Jira ticket itself, where the assignee will see it without having to
+   * jump to the dashboard.
+   *
+   * Best-effort by convention — callers should wrap in try/catch and not
+   * fail the originating action if the comment can't be posted.
+   */
+  async addComment(issueKey: string, body: string): Promise<void> {
+    await this.request(
+      `/rest/api/3/issue/${issueKey}/comment`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ body: this.toAdf(body) }),
+      },
+    );
+  }
+
+  /**
    * Low-level: POST a specific transition ID. Use only when you ALREADY know
    * the transition (not the destination status). Most callers should use
    * `transitionToStatus` instead.
