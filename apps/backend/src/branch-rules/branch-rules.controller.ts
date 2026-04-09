@@ -22,6 +22,8 @@ import { BranchRulesService } from './branch-rules.service';
 import {
   BranchRuleDto,
   CreateBranchRuleDto,
+  JiraStatusOptionDto,
+  ReorderBranchRulesDto,
   UpdateBranchRuleDto,
 } from './dto/branch-rule.dto';
 
@@ -39,12 +41,45 @@ export class BranchRulesController {
     return this.rules.findAll();
   }
 
+  @Get('jira-statuses')
+  @RequirePermission(Permission.CONFIG_MANAGE)
+  @ApiOperation({
+    summary:
+      'List every Jira status known for the configured project. Used by the dashboard to manually pick a status for unlinked rules.',
+  })
+  @ApiResponse({ status: 200, type: [JiraStatusOptionDto] })
+  listJiraStatuses(): Promise<JiraStatusOptionDto[]> {
+    return this.rules.listJiraStatuses();
+  }
+
+  @Get('github-branches')
+  @RequirePermission(Permission.CONFIG_MANAGE)
+  @ApiOperation({
+    summary:
+      'List every branch in the configured GitHub repo. Powers the "base branch" combobox in the rules form.',
+  })
+  listGithubBranches(): Promise<string[]> {
+    return this.rules.listGithubBranches();
+  }
+
   @Post()
   @RequirePermission(Permission.CONFIG_MANAGE)
   @ApiOperation({ summary: 'Create a branch state rule' })
   @ApiResponse({ status: 201, type: BranchRuleDto })
   create(@Body() dto: CreateBranchRuleDto): Promise<BranchRuleDto> {
     return this.rules.create(dto);
+  }
+
+  @Post('reorder')
+  @RequirePermission(Permission.CONFIG_MANAGE)
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Bulk-reorder rules by passing an ordered list of ids. Position becomes priority.',
+  })
+  @ApiResponse({ status: 200, type: [BranchRuleDto] })
+  reorder(@Body() dto: ReorderBranchRulesDto): Promise<BranchRuleDto[]> {
+    return this.rules.reorder(dto.ids);
   }
 
   @Patch(':id')
@@ -70,7 +105,7 @@ export class BranchRulesController {
   @RequirePermission(Permission.CONFIG_MANAGE)
   @ApiOperation({
     summary:
-      'Re-resolve every rule\'s jiraStatusId from the current jira_status_mappings',
+      "Re-resolve every rule's jiraStatusId from the current jira_status_mappings",
   })
   resync(): Promise<{ resolved: number; missing: number }> {
     return this.rules.resyncJiraStatuses();

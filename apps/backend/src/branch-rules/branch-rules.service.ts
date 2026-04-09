@@ -1,9 +1,6 @@
-import {
-  Injectable,
-  Logger,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { GitHubService } from '../integrations/github/github.service';
 import { JiraService } from '../integrations/jira/jira.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -22,6 +19,10 @@ import {
  * mapping in `jira_status_mappings`, we eagerly resolve and store the
  * matching `jiraStatusId` so the webhook handler doesn't need to look it
  * up at runtime.
+ *
+ * Manual override: callers can pass `jiraStatusId` directly in
+ * `UpdateBranchRuleDto` to bypass the auto-resolution. This is how the
+ * dashboard "Pick Jira status" dropdown works for unlinked rules.
  */
 @Injectable()
 export class BranchRulesService {
@@ -30,7 +31,25 @@ export class BranchRulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jira: JiraService,
+    private readonly github: GitHubService,
   ) {}
+
+  /**
+   * Returns every branch in the configured GitHub repo. Used by the
+   * dashboard "base branch" combobox so admins pick from real branches
+   * instead of typing free-form. Returns an empty array if the live
+   * GitHub call fails (e.g. token expired) so the form still renders.
+   */
+  async listGithubBranches(): Promise<string[]> {
+    try {
+      return await this.github.listBranches();
+    } catch (err) {
+      this.logger.warn(
+        `Failed to list GitHub branches: ${(err as Error).message}`,
+      );
+      return [];
+    }
+  }
 
   async findAll(): Promise<BranchRuleDto[]> {
     const rules = await this.prisma.branchStateRule.findMany({
@@ -67,9 +86,15 @@ export class BranchRulesService {
   async update(id: string, dto: UpdateBranchRuleDto): Promise<BranchRuleDto> {
     await this.findById(id);
 
-    // If the target status is being changed, recompute the Jira status id
+    // If a manual jiraStatusId override is provided, honor it as-is.
+    // Otherwise, if the targetStatus is being changed, recompute the
+    // jiraStatusId from the mapping table. Otherwise leave it untouched.
     let jiraStatusIdPatch: { jiraStatusId: string | null } | object = {};
-    if (dto.targetStatus !== undefined) {
+    if (dto.jiraStatusId !== undefined) {
+      jiraStatusIdPatch = {
+        jiraStatusId: dto.jiraStatusId === '' ? null : dto.jiraStatusId,
+      };
+    } else if (dto.targetStatus !== undefined) {
       jiraStatusIdPatch = {
         jiraStatusId: await this.resolveJiraStatusId(dto.targetStatus),
       };
@@ -101,6 +126,25 @@ export class BranchRulesService {
   }
 
   /**
+   * Bulk-reorder rules by passing an ordered list of ids. The position in
+   * the array becomes the new `priority` (0-indexed). Used by the dashboard
+   * drag-and-drop reorder UX so a single API call replaces N individual
+   * priority updates.
+   */
+  async reorder(orderedIds: string[]): Promise<BranchRuleDto[]> {
+    await this.prisma.$transaction(
+      orderedIds.map((id, index) =>
+        this.prisma.branchStateRule.update({
+          where: { id },
+          data: { priority: index },
+        }),
+      ),
+    );
+    this.logger.log(`Reordered ${orderedIds.length} branch rules`);
+    return this.findAll();
+  }
+
+  /**
    * Re-runs the Jira status resolution for every rule. Used when the user
    * adds new statuses to their Jira project and wants to re-link the rules
    * without re-running the seed.
@@ -124,6 +168,45 @@ export class BranchRulesService {
     return { resolved, missing };
   }
 
+  /**
+   * Returns every Jira status discovered for the configured project. The
+   * dashboard renders this as a dropdown so admins can manually pick a
+   * jiraStatusId for an unlinked rule (or override the auto-resolved one).
+   *
+   * Reads from the `jira_status_mappings` table by default — those are
+   * the statuses `seed:jira` already cached. If the table is empty, falls
+   * back to a live API call to Jira and seeds the mappings opportunistically.
+   */
+  async listJiraStatuses(): Promise<
+    { id: string; name: string; category: string | null }[]
+  > {
+    const cached = await this.prisma.jiraStatusMapping.findMany({
+      orderBy: { jiraStatusName: 'asc' },
+    });
+    if (cached.length > 0) {
+      return cached.map((m) => ({
+        id: m.jiraStatusId,
+        name: m.jiraStatusName,
+        category: null,
+      }));
+    }
+
+    // Fallback: live fetch from Jira API
+    try {
+      const discovered = await this.jira.getProjectStatuses();
+      return discovered.map((s) => ({
+        id: s.id,
+        name: s.name,
+        category: s.statusCategory?.name ?? null,
+      }));
+    } catch (err) {
+      this.logger.warn(
+        `Failed to list Jira statuses live: ${(err as Error).message}`,
+      );
+      return [];
+    }
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────
 
   /**
@@ -139,10 +222,6 @@ export class BranchRulesService {
     const mapping = await this.prisma.jiraStatusMapping.findUnique({
       where: { internalStatus: targetStatus },
     });
-    // The JiraService is injected so future improvements (e.g. validating
-    // the status id is still alive in Jira) can use it without changing the
-    // method signature.
-    void this.jira;
     return mapping?.jiraStatusId ?? null;
   }
 }

@@ -2,11 +2,14 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { BranchStateRule } from '@prisma/client';
 import { Type } from 'class-transformer';
 import {
+  ArrayNotEmpty,
+  IsArray,
   IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Min,
   ValidateNested,
 } from 'class-validator';
@@ -131,4 +134,35 @@ export class UpdateBranchRuleDto {
   @IsOptional()
   @IsBoolean()
   active?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Manual override for the Jira status id this rule transitions to. ' +
+      'Pass an empty string to clear the link. Bypasses the auto-resolution ' +
+      'from `jira_status_mappings`.',
+  })
+  @IsOptional()
+  @IsString()
+  jiraStatusId?: string;
+}
+
+export class ReorderBranchRulesDto {
+  @ApiProperty({
+    type: [String],
+    description:
+      'Ordered list of rule ids. The position in the array becomes the new priority (0-indexed).',
+  })
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsUUID('4', { each: true })
+  ids!: string[];
+}
+
+export class JiraStatusOptionDto {
+  @ApiProperty()
+  id!: string;
+  @ApiProperty()
+  name!: string;
+  @ApiPropertyOptional({ nullable: true })
+  category!: string | null;
 }

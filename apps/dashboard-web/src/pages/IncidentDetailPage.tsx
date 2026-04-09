@@ -5,8 +5,24 @@ import {
   IncidentStatus,
   SimilarIncidentDto,
 } from '@sre/shared-types';
+import { motion } from 'framer-motion';
+import {
+  ArrowLeft,
+  Calendar,
+  CheckCircle2,
+  ExternalLink,
+  GitBranch,
+  Link2,
+  Sparkles,
+  Ticket,
+  User,
+  XCircle,
+} from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
-import { PriorityBadge, StatusBadge } from '../components/Badge';
+import { PriorityBadge, StatusBadge } from '../components/ui/Badge';
+import { Button } from '../components/ui/Button';
+import { Card } from '../components/ui/Card';
+import { cn } from '../components/ui/cn';
 import { api } from '../lib/api';
 
 function fetchIncident(id: string): Promise<IncidentDto> {
@@ -53,187 +69,293 @@ export function IncidentDetailPage() {
     },
   });
 
-  if (!incident) return <div className="p-8 text-slate-500">Loading…</div>;
+  if (!incident) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-zinc-500">
+        Loading incident…
+      </div>
+    );
+  }
 
   return (
-    <div className="p-8">
-      <Link to="/incidents" className="text-sm text-indigo-600 hover:underline">
-        ← Back to incidents
+    <div className="mx-auto max-w-6xl px-8 py-10">
+      <Link
+        to="/incidents"
+        className="group inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 transition hover:text-zinc-300"
+      >
+        <ArrowLeft className="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" />
+        Back to incidents
       </Link>
 
-      <div className="mt-3 mb-6 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900">{incident.title}</h1>
-          <div className="mt-1 text-sm text-slate-500">
-            {incident.service} · reported by {incident.reporterEmail} ·{' '}
-            {new Date(incident.createdAt).toLocaleString()}
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mb-8 mt-4"
+      >
+        <div className="mb-3 flex items-center gap-2">
           <PriorityBadge name={incident.priorityName} />
-          <StatusBadge status={incident.status} />
+          <StatusBadge status={incident.status} size="md" />
         </div>
-      </div>
+        <h1 className="text-3xl font-semibold tracking-tight text-white">
+          {incident.title}
+        </h1>
+        <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-zinc-500">
+          <span className="flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5" />
+            {incident.reporterEmail}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <Calendar className="h-3.5 w-3.5" />
+            {new Date(incident.createdAt).toLocaleString()}
+          </span>
+          <span className="font-mono text-zinc-400">{incident.service}</span>
+        </div>
+      </motion.div>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-6">
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <h2 className="mb-2 text-sm font-semibold uppercase text-slate-500">Description</h2>
-            <p className="whitespace-pre-wrap text-slate-800">{incident.description}</p>
-          </section>
-
-          {incident.triageSummary && (
-            <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-2 text-sm font-semibold uppercase text-slate-500">
-                SRE Agent triage
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="space-y-6 lg:col-span-2">
+          {/* Description */}
+          <Card
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+          >
+            <div className="border-b border-zinc-800 px-6 py-4">
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Description
               </h2>
-              <pre className="whitespace-pre-wrap text-sm text-slate-800">
-                {incident.triageSummary}
-              </pre>
-            </section>
-          )}
-
-          {similar && similar.length > 0 && (
-            <section className="rounded-2xl bg-white p-6 shadow-sm">
-              <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase text-slate-500">
-                <span>🔍 Similar past incidents</span>
-                <span className="rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
-                  {similar.length}
-                </span>
-              </h2>
-              <p className="mb-3 text-xs text-slate-500">
-                These were detected via embedding similarity. Confirm or reject
-                each one to keep the knowledge base accurate.
+            </div>
+            <div className="p-6">
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
+                {incident.description}
               </p>
-              <ul className="space-y-2">
-                {similar.map((l) => (
-                  <li
-                    key={l.linkId}
-                    className="rounded-lg border border-slate-100 p-3 hover:border-indigo-200 hover:bg-indigo-50/30"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <Link
-                            to={`/incidents/${l.peerId}`}
-                            className="truncate text-sm font-medium text-indigo-600 hover:underline"
-                          >
-                            {l.peerTitle}
-                          </Link>
-                          <span className="shrink-0 rounded bg-indigo-100 px-2 py-0.5 text-xs font-semibold text-indigo-800">
-                            {(l.similarity * 100).toFixed(0)}% match
-                          </span>
-                        </div>
-                        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
-                          <PriorityBadge name={l.peerPriorityName} />
-                          <StatusBadge status={l.peerStatus} />
-                          {l.peerJiraUrl && (
-                            <a
-                              href={l.peerJiraUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-indigo-600 hover:underline"
-                            >
-                              🎫 {l.peerJiraKey}
-                            </a>
-                          )}
-                          <span className="text-slate-400">
-                            {new Date(l.peerCreatedAt).toLocaleDateString()}
-                          </span>
-                          <span
-                            className="rounded px-1.5 py-0.5 text-[10px] uppercase tracking-wide"
-                            style={{
-                              backgroundColor:
-                                l.status === IncidentLinkStatus.CONFIRMED
-                                  ? '#d1fae5'
-                                  : l.status === IncidentLinkStatus.REJECTED
-                                    ? '#fee2e2'
-                                    : '#fef3c7',
-                              color:
-                                l.status === IncidentLinkStatus.CONFIRMED
-                                  ? '#065f46'
-                                  : l.status === IncidentLinkStatus.REJECTED
-                                    ? '#991b1b'
-                                    : '#92400e',
-                            }}
-                          >
-                            {l.status}
-                          </span>
-                        </div>
-                      </div>
-                      {l.status === IncidentLinkStatus.SUGGESTED && (
-                        <div className="flex shrink-0 gap-1">
-                          <button
-                            onClick={() =>
-                              updateLink.mutate({
-                                linkId: l.linkId,
-                                status: 'CONFIRMED',
-                              })
-                            }
-                            className="rounded bg-emerald-600 px-2 py-1 text-xs text-white hover:bg-emerald-700"
-                          >
-                            Confirm
-                          </button>
-                          <button
-                            onClick={() =>
-                              updateLink.mutate({
-                                linkId: l.linkId,
-                                status: 'REJECTED',
-                              })
-                            }
-                            className="rounded bg-slate-200 px-2 py-1 text-xs text-slate-700 hover:bg-slate-300"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            </div>
+          </Card>
+
+          {/* Triage */}
+          {incident.triageSummary && (
+            <Card
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+            >
+              <div className="flex items-center gap-2 border-b border-zinc-800 px-6 py-4">
+                <div className="flex h-6 w-6 items-center justify-center rounded-md bg-brand-500/10 text-brand-400">
+                  <Sparkles className="h-3.5 w-3.5" />
+                </div>
+                <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                  SRE Agent triage
+                </h2>
+              </div>
+              <div className="p-6">
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-300">
+                  {incident.triageSummary}
+                </pre>
+              </div>
+            </Card>
+          )}
+
+          {/* Similar incidents */}
+          {similar && similar.length > 0 && (
+            <Card
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+            >
+              <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <Link2 className="h-4 w-4 text-brand-400" />
+                  <h2 className="text-xs font-semibold uppercase tracking-wider text-zinc-300">
+                    Similar past incidents
+                  </h2>
+                  <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-400">
+                    {similar.length}
+                  </span>
+                </div>
+              </div>
+              <div className="p-6">
+                <p className="mb-4 text-xs text-zinc-500">
+                  Detected via embedding similarity. Confirm or reject to
+                  curate your team's knowledge base.
+                </p>
+                <ul className="space-y-2">
+                  {similar.map((l, idx) => (
+                    <SimilarItem
+                      key={l.linkId}
+                      link={l}
+                      delay={0.2 + idx * 0.04}
+                      onConfirm={() =>
+                        updateLink.mutate({ linkId: l.linkId, status: 'CONFIRMED' })
+                      }
+                      onReject={() =>
+                        updateLink.mutate({ linkId: l.linkId, status: 'REJECTED' })
+                      }
+                    />
+                  ))}
+                </ul>
+              </div>
+            </Card>
           )}
         </div>
 
-        <aside className="space-y-4">
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold uppercase text-slate-500">Links</h3>
-            <div className="space-y-2 text-sm">
+        <div className="space-y-4">
+          <Card
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+          >
+            <div className="border-b border-zinc-800 px-6 py-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Links
+              </h3>
+            </div>
+            <div className="space-y-2 p-6 text-sm">
               {incident.jiraTicketUrl && (
                 <a
                   href={incident.jiraTicketUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="block text-indigo-600 hover:underline"
+                  className="group flex items-center gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 transition hover:border-brand-500/40 hover:bg-brand-500/5"
                 >
-                  🎫 Jira: {incident.jiraTicketKey}
+                  <Ticket className="h-4 w-4 text-brand-400" />
+                  <span className="flex-1 font-mono text-xs text-zinc-300">
+                    {incident.jiraTicketKey}
+                  </span>
+                  <ExternalLink className="h-3 w-3 text-zinc-600 group-hover:text-brand-400" />
                 </a>
               )}
               {incident.githubBranch && (
-                <div className="text-slate-700">🌿 {incident.githubBranch}</div>
+                <div className="flex items-center gap-2.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
+                  <GitBranch className="h-4 w-4 text-emerald-400" />
+                  <span className="truncate font-mono text-[11px] text-zinc-300">
+                    {incident.githubBranch}
+                  </span>
+                </div>
               )}
             </div>
-          </section>
+          </Card>
 
-          <section className="rounded-2xl bg-white p-6 shadow-sm">
-            <h3 className="mb-3 text-sm font-semibold uppercase text-slate-500">
-              Change status
-            </h3>
-            <div className="grid grid-cols-2 gap-2">
-              {Object.values(IncidentStatus).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => updateStatus.mutate(s)}
-                  disabled={s === incident.status || updateStatus.isPending}
-                  className="rounded border border-slate-300 px-2 py-1 text-xs text-slate-700 hover:bg-slate-50 disabled:opacity-30"
-                >
-                  {s.replace(/_/g, ' ')}
-                </button>
-              ))}
+          <Card
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <div className="border-b border-zinc-800 px-6 py-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Change status
+              </h3>
             </div>
-          </section>
-        </aside>
+            <div className="grid grid-cols-2 gap-2 p-6">
+              {Object.values(IncidentStatus).map((s) => {
+                const isActive = s === incident.status;
+                return (
+                  <button
+                    key={s}
+                    onClick={() => updateStatus.mutate(s)}
+                    disabled={isActive || updateStatus.isPending}
+                    className={cn(
+                      'rounded-lg border px-3 py-2 text-[11px] font-medium transition',
+                      isActive
+                        ? 'border-brand-500/40 bg-brand-500/10 text-brand-300'
+                        : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700 hover:bg-zinc-800/60 hover:text-zinc-200',
+                      'disabled:cursor-not-allowed',
+                    )}
+                  >
+                    {s.replace(/_/g, ' ').toLowerCase()}
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
       </div>
     </div>
+  );
+}
+
+function SimilarItem({
+  link,
+  delay,
+  onConfirm,
+  onReject,
+}: {
+  link: SimilarIncidentDto;
+  delay: number;
+  onConfirm: () => void;
+  onReject: () => void;
+}) {
+  const pct = (link.similarity * 100).toFixed(0);
+  return (
+    <motion.li
+      initial={{ opacity: 0, y: 6 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay }}
+      className="group rounded-xl border border-zinc-800 bg-zinc-950 p-3 transition hover:border-brand-500/30 hover:bg-zinc-900"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <Link
+              to={`/incidents/${link.peerId}`}
+              className="truncate text-sm font-medium text-zinc-100 group-hover:text-white"
+            >
+              {link.peerTitle}
+            </Link>
+            <span className="shrink-0 rounded-full bg-brand-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-brand-400">
+              {pct}% match
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <PriorityBadge name={link.peerPriorityName} />
+            <StatusBadge status={link.peerStatus} />
+            {link.peerJiraUrl && (
+              <a
+                href={link.peerJiraUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] text-brand-400 hover:text-brand-300"
+              >
+                <Ticket className="h-3 w-3" />
+                {link.peerJiraKey}
+              </a>
+            )}
+            <span className="text-[11px] text-zinc-600">
+              {new Date(link.peerCreatedAt).toLocaleDateString()}
+            </span>
+          </div>
+        </div>
+        {link.status === IncidentLinkStatus.SUGGESTED ? (
+          <div className="flex shrink-0 gap-1">
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<CheckCircle2 className="h-3.5 w-3.5" />}
+              onClick={onConfirm}
+            >
+              Confirm
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              icon={<XCircle className="h-3.5 w-3.5" />}
+              onClick={onReject}
+            >
+              Reject
+            </Button>
+          </div>
+        ) : (
+          <span
+            className={cn(
+              'shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+              link.status === IncidentLinkStatus.CONFIRMED
+                ? 'bg-emerald-500/10 text-emerald-400'
+                : 'bg-red-500/10 text-red-400',
+            )}
+          >
+            {link.status}
+          </span>
+        )}
+      </div>
+    </motion.li>
   );
 }

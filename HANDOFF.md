@@ -767,4 +767,52 @@ The URL looks like `https://hooks.slack.com/services/T.../B.../...`
 
 ---
 
-*Last updated: 2026-04-08 — Block 11 + frontends + init.mjs + Swagger auth + clone-and-cleanup indexing*
+## Frontend design system (dark modern refresh)
+
+Both frontends share the same dark theme built on **Tailwind + framer-motion
++ lucide-react + clsx** (no heavy UI kit, zero dependency on shadcn/radix).
+
+**Shared tokens** (defined in each app's `tailwind.config.js`):
+- `surface.DEFAULT/raised/hover/border` — semantic dark surfaces
+- `brand.500/600/700/glow` — indigo accent + box-shadow color
+- Custom animations: `fade-in`, `slide-up`, `shimmer` + custom keyframes
+- `boxShadow.glow` = indigo glow for primary CTAs
+
+**Global CSS** (`src/index.css` in both apps):
+- Imports Inter + JetBrains Mono from CDN
+- Dark themed scrollbar via `::-webkit-scrollbar`
+- Utility class `.glass` — `backdrop-blur + gradient + border`
+- Utility class `.bg-gradient-mesh` — subtle radial gradient for hero backgrounds
+
+**Dashboard UI kit** (`dashboard-web/src/components/ui/`):
+
+| File | What it exports |
+|------|-----------------|
+| `cn.ts` | `cn()` — tiny clsx wrapper. Import from here instead of clsx directly |
+| `Button.tsx` | `Button` with 4 variants (primary/secondary/ghost/danger), 3 sizes, `loading` state spinner, `icon` prop, framer-motion press + hover |
+| `Card.tsx` | `Card` (glass surface), `CardHeader`, `CardTitle`, `CardDescription`, `CardContent`. Optional `hover` lift + `glow` props |
+| `Badge.tsx` | `StatusBadge` (dot indicator + colors per IncidentStatus), `PriorityBadge` (CRITICAL has box-shadow glow), `Chip` (neutral/brand/success/warning/danger tones) |
+| `Skeleton.tsx` | `Skeleton`, `SkeletonRow`, `SkeletonCard` — shimmer loading states using the `.skeleton` class |
+| `EmptyState.tsx` | Icon + title + description + optional CTA slot |
+
+**Magic motion patterns**:
+- `Layout.tsx` uses `layoutId="nav-active"` so the active nav item's background flies between items when route changes
+- `AdminPage.tsx` uses `layoutId="admin-tab-active"` for the same effect on tabs
+- KPI cards in `DashboardPage.tsx` use staggered `delay` with spring physics
+- Message bubbles in `ChatPage.tsx` use `AnimatePresence` + stagger for entry
+- `TypingIndicator` component — 3 dots pulsing with delayed opacity animation
+
+**Page redesigns**:
+- Dashboard: `LoginPage`, `Layout`, `DashboardPage`, `IncidentsPage` (with search + filter chips), `IncidentDetailPage` (hero header + 2-col layout + similar incidents with rich cards), `AdminPage` (with 6 tabs + magic motion)
+- Report-web: `LoginPage` (glass card + glow orbs), `ChatPage` (full rewrite — header, bubbles with avatars, typing indicator, composer with attachments AnimatePresence, success card with emerald glow)
+
+**Conventions**:
+- Use `cn(...)` for conditional class names, never string template literals
+- Prefer `motion.div` over `div` when the surface benefits from mount/hover animation
+- Import icons from `lucide-react` — tree-shakeable, do NOT use emojis as iconography
+- Every list that can be empty MUST render `<EmptyState />`, never plain "No items" text
+- Every async list that can be loading MUST render a skeleton, never plain "Loading..." text
+
+---
+
+*Last updated: 2026-04-08 — Block 11 + frontends + init.mjs + Swagger auth + clone-and-cleanup indexing + LLM providers/models CRUD + branch rules CRUD + similar incidents with Jira comment + auto-finalize intake + dark modern design refresh*

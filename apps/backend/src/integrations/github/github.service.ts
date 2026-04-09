@@ -91,6 +91,33 @@ export class GitHubService {
     return `https://github.com/${this.env.githubOwner}/${this.env.githubRepo}/tree/${encodeURIComponent(branchName)}`;
   }
 
+  /**
+   * Lists every branch on the configured repo. Returns just the names —
+   * the dashboard uses this to populate the "base branch" combobox in the
+   * GitOps rules form so admins pick from real branches instead of typing.
+   *
+   * Single page only (max 100 branches). For repos with more, you'd add
+   * pagination via the `Link: <...>; rel="next"` header.
+   */
+  async listBranches(): Promise<string[]> {
+    const branches = await this.request<{ name: string }[]>(
+      `/repos/${this.env.githubOwner}/${this.env.githubRepo}/branches?per_page=100`,
+    );
+    return branches.map((b) => b.name).sort((a, b) => {
+      // Common base branches first, then alphabetical
+      const priority = (n: string): number => {
+        if (n === 'main') return 0;
+        if (n === 'master') return 1;
+        if (n === 'develop') return 2;
+        return 10;
+      };
+      const pa = priority(a);
+      const pb = priority(b);
+      if (pa !== pb) return pa - pb;
+      return a.localeCompare(b);
+    });
+  }
+
   // ── Webhook management (used by github.seed.ts) ──────────────────────
 
   /**

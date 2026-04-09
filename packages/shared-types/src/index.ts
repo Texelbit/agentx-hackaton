@@ -268,4 +268,34 @@ export interface UpdateBranchRuleDto {
   targetStatus?: IncidentStatus;
   priority?: number;
   active?: boolean;
+  /**
+   * Manual override for the Jira status id this rule transitions to.
+   * Pass an empty string to clear the link. Bypasses auto-resolution
+   * from `jira_status_mappings`.
+   */
+  jiraStatusId?: string;
+}
+
+export interface ReorderBranchRulesDto {
+  /** Ordered list of rule ids — position becomes the new priority. */
+  ids: string[];
+}
+
+/**
+ * One Jira status discovered from the configured project. Returned by
+ * `GET /config/branch-rules/jira-statuses`. Used to populate the manual
+ * "pick a Jira status" dropdown for unlinked rules.
+ */
+export interface JiraStatusOptionDto {
+  id: string;
+  name: string;
+  category: string | null;
+}
+
+// ── System config (editable key/value store) ──────────────────────────
+
+export interface SystemConfigEntryDto {
+  key: string;
+  value: string;
+  description: string;
 }
