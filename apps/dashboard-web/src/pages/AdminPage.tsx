@@ -1,5 +1,5 @@
 import React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { IncidentDto, PriorityDto, UserDto } from '@sre/shared-types';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
@@ -115,20 +115,111 @@ export function AdminPage() {
   );
 }
 
+const ROLES = ['SUPER_ADMIN', 'ADMIN', 'ENGINEER', 'REPORTER'] as const;
+
 function UsersTab() {
+  const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
     queryKey: ['users'],
     queryFn: () => api.get<UserDto[]>('/users').then((r) => r.data),
   });
+
+  const [showForm, setShowForm] = useState(false);
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [password, setPassword] = useState('');
+  const [role, setRole] = useState<string>('REPORTER');
+  const [error, setError] = useState<string | null>(null);
+
+  const create = useMutation({
+    mutationFn: (dto: { email: string; fullName: string; password: string; role: string }) =>
+      api.post('/users', dto).then((r) => r.data),
+    onSuccess: () => {
+      setEmail('');
+      setFullName('');
+      setPassword('');
+      setRole('REPORTER');
+      setError(null);
+      setShowForm(false);
+      void queryClient.invalidateQueries({ queryKey: ['users'] });
+    },
+    onError: (err: Error & { response?: { data?: { message?: string | string[] } } }) => {
+      const msg = err.response?.data?.message;
+      setError(Array.isArray(msg) ? msg.join(', ') : msg ?? err.message);
+    },
+  });
+
+  const inputCls =
+    'w-full rounded-lg border border-zinc-700/60 bg-zinc-800/60 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-500 outline-none focus:border-brand-500/60 focus:ring-1 focus:ring-brand-500/30 transition';
+
   if (isLoading) return <div className="text-sm text-zinc-500">Loading…</div>;
   return (
     <div>
-      <h3 className="mb-4 text-sm font-semibold text-white">Users</h3>
+      <div className="mb-4 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-white">Users</h3>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="rounded-lg bg-brand-500/10 px-3 py-1.5 text-xs font-medium text-brand-400 transition hover:bg-brand-500/20"
+        >
+          {showForm ? 'Cancel' : '+ New user'}
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showForm && (
+          <motion.form
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!email.trim() || !fullName.trim() || !password.trim()) return;
+              create.mutate({ email: email.trim(), fullName: fullName.trim(), password, role });
+            }}
+            className="mb-4 overflow-hidden rounded-xl border border-zinc-800/60 bg-zinc-900/40 p-4"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-zinc-500">Email</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="user@example.com" className={inputCls} required />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-zinc-500">Full name</label>
+                <input type="text" value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" className={inputCls} required />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-zinc-500">Password (min 12 chars)</label>
+                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••••••" className={inputCls} required minLength={12} />
+              </div>
+              <div>
+                <label className="mb-1 block text-[10px] uppercase tracking-wider text-zinc-500">Role</label>
+                <select value={role} onChange={(e) => setRole(e.target.value)} className={inputCls}>
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>{r}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+            <div className="mt-3 flex justify-end">
+              <button
+                type="submit"
+                disabled={create.isPending}
+                className="rounded-lg bg-brand-500 px-4 py-2 text-xs font-medium text-white transition hover:bg-brand-600 disabled:opacity-50"
+              >
+                {create.isPending ? 'Creating…' : 'Create user'}
+              </button>
+            </div>
+          </motion.form>
+        )}
+      </AnimatePresence>
+
       <div className="overflow-hidden rounded-xl border border-zinc-800/60">
         <table className="w-full text-sm">
           <thead className="bg-zinc-900/60 text-left text-[10px] uppercase tracking-wider text-zinc-500">
             <tr>
               <th className="px-4 py-3">Email</th>
+              <th className="px-4 py-3">Name</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Active</th>
               <th className="px-4 py-3">Protected</th>
@@ -138,13 +229,14 @@ function UsersTab() {
             {(data ?? []).map((u) => (
               <tr key={u.id} className="hover:bg-zinc-800/30">
                 <td className="px-4 py-3 text-zinc-200">{u.email}</td>
+                <td className="px-4 py-3 text-zinc-400 text-xs">{u.fullName ?? '—'}</td>
                 <td className="px-4 py-3">
                   <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-medium text-brand-400">
                     {u.role}
                   </span>
                 </td>
-                <td className="px-4 py-3">{u.isActive ? '✓' : '✗'}</td>
-                <td className="px-4 py-3">{u.isProtected ? '🔒' : ''}</td>
+                <td className="px-4 py-3 text-zinc-400">{u.isActive ? '✓' : '✗'}</td>
+                <td className="px-4 py-3 text-zinc-400">{u.isProtected ? '🔒' : ''}</td>
               </tr>
             ))}
           </tbody>

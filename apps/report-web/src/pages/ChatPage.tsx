@@ -281,6 +281,41 @@ export function ChatPage() {
         </div>
       </div>
 
+      {/* New incident button — only when chat is finalized */}
+      {finalized && (
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="relative z-10 border-t border-zinc-800/60 bg-zinc-950/60 backdrop-blur-xl"
+        >
+          <div className="mx-auto max-w-3xl px-6 py-4">
+            <button
+              onClick={async () => {
+                setFinalized(null);
+                setReadyToFinalize(false);
+                setMessages([]);
+                setInput('');
+                setAttachments([]);
+                const res = await api.post<ChatSessionDto>('/chat/sessions');
+                setSessionId(res.data.id);
+                setMessages([
+                  {
+                    id: 'system-welcome',
+                    role: ChatMessageRole.AGENT,
+                    content:
+                      "Hi! I'm here to help you report an incident. Tell me what's happening — what you expected, what actually occurred, and any error messages you've seen. Feel free to attach screenshots too.",
+                  },
+                ]);
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-brand-500/30 bg-brand-500/10 px-4 py-3 text-sm font-medium text-brand-400 shadow-[0_0_40px_-10px_rgba(99,102,241,0.3)] transition hover:bg-brand-500/20 hover:text-brand-300"
+            >
+              <LifeBuoy className="h-4 w-4" />
+              Report another incident
+            </button>
+          </div>
+        </motion.div>
+      )}
+
       {/* Composer */}
       {!finalized && (
         <motion.div

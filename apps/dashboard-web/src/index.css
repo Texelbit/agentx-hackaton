@@ -15,3 +15,18 @@ body,
   background-color: #09090b;
   color: #e4e4e7;
 }
+
+/* Force dark dropdown options on native <select> elements */
+select,
+select option {
+  background-color: #18181b;
+  color: #e4e4e7;
+}
+
+select option:checked {
+  background-color: #3f3f46;
+}
+
+select option:hover {
+  background-color: #27272a;
+}
