@@ -1,16 +1,27 @@
+import React from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { PriorityDto, UserDto } from '@sre/shared-types';
-import { motion } from 'framer-motion';
+import { IncidentDto, PriorityDto, UserDto } from '@sre/shared-types';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
+  ArrowRight,
   Bot,
+  Calendar,
+  ChevronDown,
   Cog,
+  ExternalLink,
   GitBranch,
   ListChecks,
   ScrollText,
+  Sparkles,
+  Ticket,
   type LucideIcon,
+  User,
   Users,
+  X,
 } from 'lucide-react';
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PriorityBadge, StatusBadge } from '../components/ui/Badge';
 import { BranchRulesManager } from '../components/BranchRulesManager';
 import { LlmConfigManager } from '../components/LlmConfigManager';
 import { SystemConfigManager } from '../components/SystemConfigManager';
@@ -225,60 +236,478 @@ function SystemConfigTab() {
   );
 }
 
+interface AuditRow {
+  id: string;
+  actorType: string;
+  action: string;
+  entity: string;
+  entityId: string;
+  before: Record<string, unknown> | null;
+  after: Record<string, unknown> | null;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
+/** Human-readable summary built from before/after/metadata. */
+function auditSummary(row: AuditRow): string {
+  const before = row.before as Record<string, string> | null;
+  const after = row.after as Record<string, string> | null;
+  const meta = row.metadata as Record<string, string> | null;
+
+  if (row.action === 'STATUS_CHANGE' && before?.status && after?.status) {
+    const via = meta?.eventType ? ` via ${meta.eventType.replace(/_/g, ' ')}` : '';
+    const branch = meta?.branch ? ` on ${meta.branch}` : '';
+    return `${before.status} → ${after.status}${via}${branch}`;
+  }
+  if (row.action === 'CREATE') return `Created ${row.entity.toLowerCase()}`;
+  if (row.action === 'UPDATE') return `Updated ${row.entity.toLowerCase()}`;
+  if (row.action === 'DELETE') return `Deleted ${row.entity.toLowerCase()}`;
+  return row.action.replace(/_/g, ' ').toLowerCase();
+}
+
+/* ── Incident preview modal ──────────────────────────────────── */
+
+function IncidentPreviewModal({
+  incidentId,
+  onClose,
+}: {
+  incidentId: string;
+  onClose: () => void;
+}) {
+  const navigate = useNavigate();
+  const { data: incident, isLoading } = useQuery({
+    queryKey: ['incidents', incidentId],
+    queryFn: () =>
+      api.get<IncidentDto>(`/incidents/${incidentId}`).then((r) => r.data),
+    enabled: !!incidentId,
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2 }}
+        className="relative mx-4 max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-700/60 bg-zinc-900 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* close button */}
+        <button
+          onClick={onClose}
+          className="absolute right-3 top-3 rounded-lg p-1 text-zinc-500 transition hover:bg-zinc-800 hover:text-white"
+        >
+          <X size={16} />
+        </button>
+
+        {isLoading || !incident ? (
+          <div className="flex h-48 items-center justify-center text-sm text-zinc-500">
+            Loading incident…
+          </div>
+        ) : (
+          <div className="p-6">
+            {/* header */}
+            <div className="mb-1 flex items-center gap-2">
+              <PriorityBadge name={incident.priorityName} />
+              <StatusBadge status={incident.status} size="md" />
+            </div>
+            <h2 className="mt-2 text-xl font-semibold text-white">
+              {incident.title}
+            </h2>
+            <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-zinc-500">
+              <span className="inline-flex items-center gap-1">
+                <User className="h-3 w-3" /> {incident.reporterEmail}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Calendar className="h-3 w-3" />{' '}
+                {new Date(incident.createdAt).toLocaleString()}
+              </span>
+              <span className="font-mono text-zinc-400">{incident.service}</span>
+            </div>
+
+            {/* description */}
+            <div className="mt-5 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+              <h3 className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-zinc-500">
+                Description
+              </h3>
+              <p className="whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
+                {incident.description}
+              </p>
+            </div>
+
+            {/* triage summary */}
+            {incident.triageSummary && (
+              <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950 p-4">
+                <div className="mb-2 flex items-center gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5 text-brand-400" />
+                  <h3 className="text-[10px] font-semibold uppercase tracking-wider text-zinc-300">
+                    SRE Agent Triage
+                  </h3>
+                </div>
+                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-zinc-300">
+                  {incident.triageSummary}
+                </pre>
+              </div>
+            )}
+
+            {/* links */}
+            {(incident.jiraTicketUrl || incident.githubBranch) && (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {incident.jiraTicketUrl && (
+                  <a
+                    href={incident.jiraTicketUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-xs text-brand-400 transition hover:border-brand-500/40"
+                  >
+                    <Ticket className="h-3.5 w-3.5" />
+                    {incident.jiraTicketKey}
+                    <ExternalLink className="h-2.5 w-2.5" />
+                  </a>
+                )}
+                {incident.githubBranch && (
+                  <div className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 font-mono text-[11px] text-zinc-300">
+                    <GitBranch className="h-3.5 w-3.5 text-emerald-400" />
+                    {incident.githubBranch}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* full detail link */}
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => navigate(`/incidents/${incidentId}`)}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-brand-500/10 px-4 py-2 text-xs font-medium text-brand-400 transition hover:bg-brand-500/20"
+              >
+                View full detail
+                <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+        )}
+      </motion.div>
+    </div>
+  );
+}
+
+/** All known action values for the filter dropdown. */
+const AUDIT_ACTIONS = [
+  'STATUS_CHANGE',
+  'CREATE',
+  'UPDATE',
+  'DELETE',
+] as const;
+
 function AuditTab() {
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+
+  /* ── filters ────────────────────────────────────────────────── */
+  const [search, setSearch] = useState('');
+  const [actionFilter, setActionFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
   const { data, isLoading } = useQuery({
     queryKey: ['audit'],
     queryFn: () =>
-      api
-        .get<{
-          items: {
-            id: string;
-            actorType: string;
-            action: string;
-            entity: string;
-            entityId: string;
-            createdAt: string;
-          }[];
-          total: number;
-        }>('/audit')
-        .then((r) => r.data),
+      api.get<{ items: AuditRow[]; total: number }>('/audit?take=200').then((r) => r.data),
   });
+
   if (isLoading) return <div className="text-sm text-zinc-500">Loading…</div>;
+
+  /* ── client-side filtering ─────────────────────────────────── */
+  const rows = (data?.items ?? []).filter((row) => {
+    if (actionFilter && row.action !== actionFilter) return false;
+
+    if (dateFrom) {
+      const from = new Date(dateFrom);
+      if (new Date(row.createdAt) < from) return false;
+    }
+    if (dateTo) {
+      const to = new Date(dateTo);
+      to.setHours(23, 59, 59, 999);
+      if (new Date(row.createdAt) > to) return false;
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      const haystack = [
+        row.actorType,
+        row.action,
+        row.entity,
+        row.entityId,
+        auditSummary(row),
+      ]
+        .join(' ')
+        .toLowerCase();
+      if (!haystack.includes(q)) return false;
+    }
+
+    return true;
+  });
+
+  const inputCls =
+    'rounded-lg border border-zinc-700/60 bg-zinc-800/60 px-3 py-1.5 text-xs text-zinc-200 placeholder-zinc-500 outline-none focus:border-brand-500/60 focus:ring-1 focus:ring-brand-500/30 transition';
+
   return (
     <div>
       <h3 className="mb-4 text-sm font-semibold text-white">Audit log</h3>
+
+      {/* ── filter bar ───────────────────────────────────────── */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          type="text"
+          placeholder="Search logs…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className={cn(inputCls, 'w-56')}
+        />
+
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          className={cn(inputCls, 'w-40')}
+        >
+          <option value="">All actions</option>
+          {AUDIT_ACTIONS.map((a) => (
+            <option key={a} value={a}>
+              {a}
+            </option>
+          ))}
+        </select>
+
+        <div className="flex items-center gap-1 text-[10px] text-zinc-500">
+          <span>From</span>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className={cn(inputCls, 'w-32')}
+          />
+          <span>To</span>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className={cn(inputCls, 'w-32')}
+          />
+        </div>
+
+        {(search || actionFilter || dateFrom || dateTo) && (
+          <button
+            onClick={() => {
+              setSearch('');
+              setActionFilter('');
+              setDateFrom('');
+              setDateTo('');
+            }}
+            className="rounded bg-zinc-800 px-2 py-1 text-[10px] text-zinc-400 transition hover:bg-zinc-700 hover:text-white"
+          >
+            Clear
+          </button>
+        )}
+
+        <span className="ml-auto text-[10px] text-zinc-600">
+          {rows.length} result{rows.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
+      {/* ── table ────────────────────────────────────────────── */}
       <div className="overflow-hidden rounded-xl border border-zinc-800/60">
         <table className="w-full text-sm">
           <thead className="bg-zinc-900/60 text-left text-[10px] uppercase tracking-wider text-zinc-500">
             <tr>
+              <th className="w-8 px-2 py-3" />
               <th className="px-4 py-3">When</th>
               <th className="px-4 py-3">Actor</th>
               <th className="px-4 py-3">Action</th>
+              <th className="px-4 py-3">Summary</th>
               <th className="px-4 py-3">Entity</th>
+              <th className="w-8 px-2 py-3" />
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/60">
-            {(data?.items ?? []).map((row) => (
-              <tr key={row.id} className="hover:bg-zinc-800/30">
-                <td className="px-4 py-3 text-[11px] text-zinc-500">
-                  {new Date(row.createdAt).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 text-xs text-zinc-300">
-                  {row.actorType}
-                </td>
-                <td className="px-4 py-3">
-                  <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-brand-400">
-                    {row.action}
-                  </span>
-                </td>
-                <td className="px-4 py-3 font-mono text-[11px] text-zinc-400">
-                  {row.entity}#{row.entityId.slice(0, 8)}
+            {rows.map((row) => {
+              const isOpen = expanded === row.id;
+              const hasMeta = row.metadata || row.before || row.after;
+              const isIncident = row.entity === 'Incident';
+              const meta = row.metadata as Record<string, string> | null;
+
+              return (
+                <React.Fragment key={row.id}>
+                  {/* main row */}
+                  <tr className="group hover:bg-zinc-800/30">
+                    {/* expand chevron */}
+                    <td className="px-2 py-3">
+                      {hasMeta && (
+                        <button
+                          onClick={() => setExpanded(isOpen ? null : row.id)}
+                          className="text-zinc-600 transition hover:text-zinc-300"
+                        >
+                          <ChevronDown
+                            size={14}
+                            className={cn(
+                              'transition-transform',
+                              isOpen && 'rotate-180',
+                            )}
+                          />
+                        </button>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-3 text-[11px] text-zinc-500 whitespace-nowrap">
+                      {new Date(row.createdAt).toLocaleString()}
+                    </td>
+
+                    <td className="px-4 py-3 text-xs text-zinc-300 whitespace-nowrap">
+                      {row.actorType.replace(/_/g, ' ')}
+                    </td>
+
+                    <td className="px-4 py-3">
+                      <span className="rounded bg-zinc-800 px-2 py-0.5 font-mono text-[10px] text-brand-400">
+                        {row.action}
+                      </span>
+                    </td>
+
+                    <td className="max-w-xs truncate px-4 py-3 text-xs text-zinc-300">
+                      {auditSummary(row)}
+                    </td>
+
+                    <td className="px-4 py-3 font-mono text-[11px] text-zinc-400">
+                      {isIncident ? (
+                        <button
+                          onClick={() => setPreviewId(row.entityId)}
+                          className="inline-flex items-center gap-1 text-brand-400 transition hover:text-brand-300 hover:underline"
+                        >
+                          Incident#{row.entityId.slice(0, 8)}
+                          <ExternalLink size={10} />
+                        </button>
+                      ) : (
+                        <>
+                          {row.entity}#{row.entityId.slice(0, 8)}
+                        </>
+                      )}
+                    </td>
+
+                    <td className="px-2 py-3">
+                      {isIncident && (
+                        <button
+                          onClick={() => setPreviewId(row.entityId)}
+                          className="text-zinc-600 opacity-0 transition group-hover:opacity-100 hover:text-brand-400"
+                        >
+                          <ArrowRight size={14} />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+
+                  {/* inline detail row — directly below its parent */}
+                  {isOpen && hasMeta && (
+                    <tr>
+                      <td colSpan={7} className="bg-zinc-900/40 px-10 py-3">
+                        <AnimatePresence>
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="grid grid-cols-3 gap-4 text-[11px]"
+                          >
+                            {row.before && (
+                              <div>
+                                <span className="mb-1 block font-semibold uppercase tracking-wider text-zinc-500">
+                                  Before
+                                </span>
+                                <pre className="whitespace-pre-wrap text-red-400/80">
+                                  {JSON.stringify(row.before, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                            {row.after && (
+                              <div>
+                                <span className="mb-1 block font-semibold uppercase tracking-wider text-zinc-500">
+                                  After
+                                </span>
+                                <pre className="whitespace-pre-wrap text-emerald-400/80">
+                                  {JSON.stringify(row.after, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                            {meta && (
+                              <div>
+                                <span className="mb-1 block font-semibold uppercase tracking-wider text-zinc-500">
+                                  Metadata
+                                </span>
+                                <div className="space-y-1 text-zinc-400">
+                                  {meta.eventType && (
+                                    <p>
+                                      <span className="text-zinc-500">Event:</span>{' '}
+                                      {meta.eventType}
+                                    </p>
+                                  )}
+                                  {meta.branch && (
+                                    <p>
+                                      <span className="text-zinc-500">Branch:</span>{' '}
+                                      <span className="font-mono text-brand-400">
+                                        {meta.branch}
+                                      </span>
+                                    </p>
+                                  )}
+                                  {meta.prUrl && (
+                                    <p>
+                                      <span className="text-zinc-500">PR:</span>{' '}
+                                      <a
+                                        href={meta.prUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-brand-400 hover:underline"
+                                      >
+                                        {meta.prUrl}
+                                      </a>
+                                    </p>
+                                  )}
+                                  {meta.mergedBy && (
+                                    <p>
+                                      <span className="text-zinc-500">Merged by:</span>{' '}
+                                      {meta.mergedBy}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </motion.div>
+                        </AnimatePresence>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
+
+            {rows.length === 0 && (
+              <tr>
+                <td colSpan={7} className="px-4 py-8 text-center text-xs text-zinc-600">
+                  No audit entries match the current filters.
                 </td>
               </tr>
-            ))}
+            )}
           </tbody>
         </table>
       </div>
+
+      {/* incident preview modal */}
+      <AnimatePresence>
+        {previewId && (
+          <IncidentPreviewModal
+            incidentId={previewId}
+            onClose={() => setPreviewId(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

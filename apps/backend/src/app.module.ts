@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { BranchRulesModule } from './branch-rules/branch-rules.module';
@@ -34,6 +35,11 @@ import { WebhooksModule } from './webhooks/webhooks.module';
 @Module({
   imports: [
     EnvModule,
+    ThrottlerModule.forRoot([
+      // 60 requests / minute / IP — protects auth, chat and webhook endpoints
+      // from brute force and abusive automation.
+      { ttl: 60_000, limit: 60 },
+    ]),
     PrismaModule,
     LlmClientModule,
     SystemConfigModule,
@@ -56,6 +62,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: LoggingInterceptor },
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
 export class AppModule {}

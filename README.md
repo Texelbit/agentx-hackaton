@@ -17,7 +17,6 @@
 | **[QUICKGUIDE.md](QUICKGUIDE.md)** | One-command setup, `.env` walkthrough, verification, pre-built test scenario |
 | **[AGENTS_USE.md](AGENTS_USE.md)** | Deep dive on every agent, orchestration, context engineering, security, observability |
 | **[HANDOFF.md](HANDOFF.md)** | Full technical handoff — module map, IoC bridges, design patterns, integration setup |
-| **[SRE_AGENT_SPEC.md](SRE_AGENT_SPEC.md)** | Original product spec (source of truth) |
 | **🎥 Demo video** | _TBD — link added before submission_ |
 
 ---
@@ -57,14 +56,18 @@ A non-technical user (e.g. a support agent for the reference e-commerce **Reacti
 
 ## 🧠 AI agents
 
-| Agent | Default model | Responsibility | Source |
-|---|---|---|---|
-| **IntakeAgent** | Gemini 2.5 Flash | Natural conversation with reporter, decides when to finalize | [`intake.agent.ts`](apps/backend/src/chat/agents/intake.agent.ts) |
-| **TriageAgent (SREAgent)** | Gemini 2.5 Pro | RAG-grounded triage → structured incident DTO | [`sre.agent.ts`](apps/backend/src/incidents/agents/sre.agent.ts) |
-| **EmailComposerAgent** | Gemini 2.5 Flash | Writes the resolution email to the reporter | [`email.observer.ts`](apps/backend/src/notifications/observers/email.observer.ts) |
-| **Embeddings** | OpenAI `text-embedding-3-small` | Vectorizes incidents + repo files for similarity search | [`rag.service.ts`](apps/backend/src/rag/rag.service.ts) |
+> **Architecture note.** Every reasoning agent in the system uses a **runtime-configurable LLM**: providers, models, and per-agent assignments live in the `llm_providers`, `llm_models` and `llm_configs` Postgres tables and are edited from **Admin → LLM** in the dashboard. The Strategy pattern in [`packages/llm-client/`](packages/llm-client/) lets us swap Gemini ↔ OpenAI ↔ Anthropic Claude at runtime with **zero restart**.
+>
+> **Current submission setup** — all reasoning agents are pointed at **Google Gemini 2.5 Pro** for the hackathon demo. Embeddings stay on **OpenAI `text-embedding-3-small`** because Gemini's embedding model is not 1536-dim compatible with our pgvector schema.
 
-All four are **swappable at runtime** from the Admin panel (`/admin → LLM`) — providers, models, and per-agent assignments live in Postgres and resolve through a Strategy pattern ([`packages/llm-client/`](packages/llm-client/)).
+| Agent | Type | Configured model (today) | Responsibility | Source |
+|---|---|---|---|---|
+| **IntakeAgent** | Reasoning (configurable) | **Gemini 2.5 Pro** | Natural conversation with reporter, auto-finalizes when context is enough | [`intake.agent.ts`](apps/backend/src/chat/agents/intake.agent.ts) |
+| **TriageAgent (SREAgent)** | Reasoning (configurable) | **Gemini 2.5 Pro** | RAG-grounded triage → structured incident DTO | [`sre.agent.ts`](apps/backend/src/incidents/agents/sre.agent.ts) |
+| **EmailComposerAgent** | Reasoning (configurable) | **Gemini 2.5 Pro** | Writes the resolution email to the reporter | [`email.observer.ts`](apps/backend/src/notifications/observers/email.observer.ts) |
+| **Embeddings** | Vectorizer (fixed) | **OpenAI `text-embedding-3-small`** (1536-dim) | Vectorizes incidents + repo files for pgvector similarity search | [`rag.service.ts`](apps/backend/src/rag/rag.service.ts) |
+
+To switch any reasoning agent to a different provider/model, no code change is needed: open **Admin → LLM**, edit the assignment row for that agent role, and the next call will use the new model. Configuration tables: `llm_providers`, `llm_models`, `llm_configs` (see [Prisma schema](apps/backend/prisma/schema.prisma)).
 
 ---
 
@@ -107,7 +110,7 @@ flowchart LR
 
 **Backend** — NestJS 10 · Prisma 5 · PostgreSQL (Supabase) · pgvector · Socket.io · nodemailer · JWT RS256
 **Frontends** — React 18 · Vite 6 · TypeScript · TailwindCSS · framer-motion · @tanstack/react-query · zustand · @dnd-kit · socket.io-client
-**AI** — Gemini 2.5 Flash/Pro · OpenAI embeddings · Anthropic Claude (swappable)
+**AI** — Gemini 2.5 Pro (current) · OpenAI `text-embedding-3-small` (embeddings) · runtime-swappable to OpenAI / Anthropic Claude
 **Integrations** — Jira Cloud REST v3 · GitHub REST v3 + Webhooks · Gmail SMTP · Slack incoming webhook
 **DevOps** — Docker Compose · VS Code Dev Tunnels · `npm run init` one-shot bootstrap
 
@@ -135,7 +138,8 @@ npm run dev:report             # :5174
 - **Protected super-admin** — DB-enforced `isProtected` flag
 - **Swagger UI behind login** — [`swagger-auth.middleware.ts`](apps/backend/src/swagger/swagger-auth.middleware.ts)
 - **Global input validation** — `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`
-- **Prompt injection defense** — hardened system prompts, JSON-only responses, strict schema validation
+- **Prompt injection defense** — untrusted user text wrapped in `<<<USER_DATA_START/END>>>` delimiters, system prompts explicitly instruct the model to treat that block as data, JSON-only responses with strict schema validation, enum-bounded priority field
+- **Rate limiting** — global `ThrottlerGuard` (60 req/min/IP) wired in [`app.module.ts`](apps/backend/src/app.module.ts)
 - **Secrets hygiene** — `.env` git-ignored, JWT RS256 keypair generated by `npm run init`
 
 ---
