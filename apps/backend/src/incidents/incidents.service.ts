@@ -33,6 +33,7 @@ import {
   IncidentWithRelations,
   IncidentsRepository,
 } from './repositories/incidents.repository';
+import { StorageService } from '../storage/storage.service';
 import { BranchNamingService } from './services/branch-naming.service';
 import { IncidentLinksService } from './services/incident-links.service';
 
@@ -61,6 +62,7 @@ export class IncidentsService implements IIncidentFromChatCreator {
     private readonly systemConfig: SystemConfigService,
     private readonly links: IncidentLinksService,
     private readonly env: EnvConfig,
+    private readonly storage: StorageService,
     @Optional()
     @Inject(INCIDENT_NOTIFIER)
     private readonly notifier?: IIncidentNotifier,
@@ -205,7 +207,7 @@ export class IncidentsService implements IIncidentFromChatCreator {
     let triagePriorityId = priority.id;
     if (triage?.assignedPriorityName) {
       try {
-        const triagePriority = await this.priorities.findByName(
+        const triagePriority = await this.resolvePriority(
           triage.assignedPriorityName,
         );
         triagePriorityId = triagePriority.id;
@@ -275,7 +277,57 @@ export class IncidentsService implements IIncidentFromChatCreator {
       }
     }
 
-    // 8. Realtime broadcast + notification dispatch (best-effort)
+    // 8. Upload attachments to GCS + save to DB + attach to Jira
+    if (args.extracted.attachments?.length) {
+      for (const att of args.extracted.attachments) {
+        try {
+          // Upload to GCS
+          let url: string | null = null;
+          if (this.storage.isConfigured) {
+            url = await this.storage.uploadBase64({
+              base64: att.data,
+              mimeType: att.mimeType,
+              folder: `incidents/${withTriage.id}`,
+            });
+          }
+
+          // Save to DB
+          const ext = att.mimeType.split('/')[1] ?? 'bin';
+          await this.prisma.incidentAttachment.create({
+            data: {
+              incidentId: withTriage.id,
+              url: url ?? `data:${att.mimeType};base64,${att.data.slice(0, 50)}...`,
+              mimeType: att.mimeType,
+              uploadedBy: args.reporterEmail,
+            },
+          });
+
+          // Attach to Jira ticket
+          if (withTriage.jiraTicketKey) {
+            try {
+              await this.jira.addAttachment(withTriage.jiraTicketKey, {
+                buffer: Buffer.from(att.data, 'base64'),
+                filename: `attachment-${Date.now()}.${ext}`,
+                mimeType: att.mimeType,
+              });
+            } catch (jiraErr) {
+              this.logger.warn(
+                `Jira attachment failed for ${withTriage.jiraTicketKey}: ${(jiraErr as Error).message}`,
+              );
+            }
+          }
+        } catch (err) {
+          this.logger.warn(
+            `Attachment upload failed: ${(err as Error).message}`,
+          );
+        }
+      }
+      this.logger.log(
+        `Processed ${args.extracted.attachments.length} attachments for incident ${withTriage.id}`,
+      );
+    }
+
+    // 9. Realtime broadcast + notification dispatch (best-effort)
     this.realtime?.emit('incident.created', {
       id: withTriage.id,
       title: withTriage.title,
@@ -353,9 +405,14 @@ export class IncidentsService implements IIncidentFromChatCreator {
   }
 
   private async resolvePriority(name: string) {
+    // Normalize to UPPER_CASE so "Critical" / "critical" / "CRITICAL" all match.
+    const normalized = name.toUpperCase().trim();
     try {
-      return await this.priorities.findByName(name);
+      return await this.priorities.findByName(normalized);
     } catch {
+      this.logger.warn(
+        `Priority "${name}" (normalized: "${normalized}") not found — falling back to MEDIUM`,
+      );
       return this.priorities.findByName('MEDIUM');
     }
   }

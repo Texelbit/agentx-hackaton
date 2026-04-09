@@ -86,6 +86,17 @@ export class GitHubWebhookService {
       return;
     }
 
+    // Ignore events fired by the initial branch creation (GitHub sends a
+    // `push` with 0 commits when a branch is created). Without this guard,
+    // every new incident immediately jumps from BACKLOG to IN_PROGRESS.
+    const ageMs = Date.now() - new Date(incident.createdAt).getTime();
+    if (ageMs < 60_000) {
+      this.logger.log(
+        `Ignoring ${eventType} for ${ticketKey} — incident created ${Math.round(ageMs / 1000)}s ago (likely the initial branch creation push)`,
+      );
+      return;
+    }
+
     // Find the highest-priority matching rule
     const rules = await this.prisma.branchStateRule.findMany({
       where: { eventType, active: true },

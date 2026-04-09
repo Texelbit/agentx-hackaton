@@ -194,6 +194,17 @@ export class EnvConfig {
     return this.required('SLACK_WEBHOOK_URL');
   }
 
+  // ── GCP Cloud Storage ────────────────────────────────────────────────
+  get gcpProjectId(): string | undefined {
+    return this.config.get<string>('GCP_PROJECT_ID') || undefined;
+  }
+  get gcsBucketName(): string | undefined {
+    return this.config.get<string>('GCP_BUCKET_NAME') || undefined;
+  }
+  get gcsCredentialsPath(): string | undefined {
+    return this.config.get<string>('GOOGLE_APPLICATION_CREDENTIALS') || undefined;
+  }
+
   // ── RAG ──────────────────────────────────────────────────────────────
   // Both paths are optional — empty string means "no folder available, skip".
   // The indexer service handles missing folders gracefully.

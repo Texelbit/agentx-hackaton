@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(ls apps/dashboard-web/tailwind.config.*)"
+      "Bash(ls apps/dashboard-web/tailwind.config.*)",
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
     ]
   }
 }

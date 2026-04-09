@@ -5,6 +5,11 @@
  *
  * Lives in the `chat/` module because the agent that produces it lives here.
  */
+export interface ExtractedAttachment {
+  mimeType: string;
+  data: string; // base64
+}
+
 export interface ExtractedIncident {
   title: string;
   description: string;
@@ -15,4 +20,6 @@ export interface ExtractedIncident {
   reproductionSteps?: string;
   /** Any error message / stack trace pasted by the user. */
   errorOutput?: string;
+  /** Images/files attached during the chat. */
+  attachments?: ExtractedAttachment[];
 }

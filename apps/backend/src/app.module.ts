@@ -21,6 +21,7 @@ import { RealtimeModule } from './realtime/realtime.module';
 import { RolesModule } from './roles/roles.module';
 import { SystemConfigModule } from './system-config/system-config.module';
 import { UsersModule } from './users/users.module';
+import { StorageModule } from './storage/storage.module';
 import { WebhooksModule } from './webhooks/webhooks.module';
 
 /**
@@ -41,6 +42,7 @@ import { WebhooksModule } from './webhooks/webhooks.module';
       { ttl: 60_000, limit: 60 },
     ]),
     PrismaModule,
+    StorageModule,
     LlmClientModule,
     SystemConfigModule,
     LlmConfigModule,

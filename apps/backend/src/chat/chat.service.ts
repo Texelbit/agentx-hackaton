@@ -28,6 +28,7 @@ import {
 export type ChatStreamEvent =
   | { type: 'delta'; content: string }
   | { type: 'agent-done' }
+  | { type: 'status'; message: string }
   | { type: 'incident-created'; incidentId: string }
   | { type: 'finalize-error'; message: string };
 
@@ -128,6 +129,8 @@ export class ChatService {
 
     // 6. Finalize + create the incident inline
     try {
+      yield { type: 'status', message: 'Analyzing conversation…' };
+
       const { extracted } = await this.finalizeInternal(
         session.id,
         fullHistory,
@@ -141,6 +144,8 @@ export class ChatService {
         };
         return;
       }
+
+      yield { type: 'status', message: 'Creating incident & running triage…' };
 
       const incident = await this.incidentCreator.createFromChat({
         chatSessionId: session.id,
@@ -204,10 +209,26 @@ export class ChatService {
     }
 
     const extracted = await this.intakeAgent.extract(history);
+
+    // Collect all image attachments from user messages in this session
+    const session = await this.repo.findSession(sessionId);
+    if (session) {
+      const chatAttachments = session.messages
+        .filter((m) => m.role === ChatMessageRole.USER && m.attachments)
+        .flatMap((m) => {
+          const raw = m.attachments as { mimeType: string; data: string }[];
+          return Array.isArray(raw) ? raw : [];
+        })
+        .filter((a) => a.mimeType && a.data);
+      if (chatAttachments.length > 0) {
+        extracted.attachments = chatAttachments;
+      }
+    }
+
     const finalized = await this.repo.markFinalized(sessionId);
 
     this.logger.log(
-      `Chat session ${sessionId} finalized — extracted "${extracted.title}"`,
+      `Chat session ${sessionId} finalized — extracted "${extracted.title}" with ${extracted.attachments?.length ?? 0} attachments`,
     );
 
     return { session: finalized, extracted };

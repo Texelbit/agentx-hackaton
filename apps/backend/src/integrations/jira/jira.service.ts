@@ -154,6 +154,36 @@ export class JiraService {
     return { transitionId: match.id, transitionName: match.name };
   }
 
+  /**
+   * Attaches a file to a Jira issue. Uses the native FormData API (Node 18+)
+   * which handles multipart boundaries correctly.
+   */
+  async addAttachment(
+    issueKey: string,
+    file: { buffer: Buffer; filename: string; mimeType: string },
+  ): Promise<void> {
+    const blob = new Blob([file.buffer], { type: file.mimeType });
+    const form = new FormData();
+    form.append('file', blob, file.filename);
+
+    const url = `${this.env.jiraBaseUrl}/rest/api/3/issue/${issueKey}/attachments`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: this.authHeader,
+        'X-Atlassian-Token': 'no-check',
+      },
+      body: form,
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      this.logger.error(`Jira attachment ${issueKey} → ${res.status}: ${text}`);
+      throw new Error(`Jira attachment error ${res.status}: ${text}`);
+    }
+    this.logger.log(`Attached ${file.filename} to ${issueKey}`);
+  }
+
   // ── helpers ──────────────────────────────────────────────────────────
 
   private async request<T = unknown>(

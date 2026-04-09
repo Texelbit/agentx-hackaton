@@ -23,6 +23,8 @@ async function bootstrap(): Promise<void> {
   const env = app.get(EnvConfig);
 
   // ── Global middleware ────────────────────────────────────────────────
+  // Increase body size limit for base64 image attachments in chat messages
+  app.useBodyParser('json', { limit: '50mb' });
   app.use(cookieParser());
 
   app.useGlobalPipes(

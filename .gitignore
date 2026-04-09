@@ -145,9 +145,11 @@ vite.config.ts.timestamp-*
 # manually for debugging.
 ecommerce-ref/
 
-# JWT keypair
+# JWT keypair (never commit)
 keys/
 *.pem
+# Allow GCP testing credentials for hackathon judges
+!apps/backend/.keys/gcp-credentials.json
 
 # Prisma
 apps/backend/prisma/migrations/dev.db*

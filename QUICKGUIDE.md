@@ -71,12 +71,21 @@ TEAM_EMAIL=team@example.com
 # Slack (optional)
 SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
+# GCP Cloud Storage (incident attachments)
+# ⚠️ Testing credentials are already included in the repo for judges.
+# To use your own, update these values:
+GCP_PROJECT_ID=agentx-492817
+GCP_BUCKET_NAME=agentx-storage
+GOOGLE_APPLICATION_CREDENTIALS=./.keys/gcp-credentials.json
+
 # Super admin (created by the bootstrap seed)
 SUPER_ADMIN_EMAIL=admin@example.com
 SUPER_ADMIN_PASSWORD=ChangeMe123!
 ```
 
 > 📖 Every variable is documented inline in [`.env.example`](.env.example).
+>
+> 📌 **GCP note for judges:** A testing-only service account JSON is committed at `apps/backend/.keys/gcp-credentials.json` so you don't need your own GCP account. It has minimal permissions and will be revoked after the hackathon. If you prefer your own, create a bucket + service account with `Storage Object Creator` + `Storage Object Viewer` roles and update the env vars above.
 
 ---
 

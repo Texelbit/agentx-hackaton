@@ -8,6 +8,8 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Image as ImageIcon,
   LifeBuoy,
   LogOut,
@@ -29,6 +31,8 @@ interface DisplayMessage {
   role: ChatMessageRole;
   content: string;
   pending?: boolean;
+  /** Base64 data URIs for inline image previews in user messages. */
+  images?: string[];
 }
 
 export function ChatPage() {
@@ -38,8 +42,11 @@ export function ChatPage() {
   const [input, setInput] = useState('');
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [streaming, setStreaming] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [readyToFinalize, setReadyToFinalize] = useState(false);
   const [finalized, setFinalized] = useState<FinalizeResponseDto | null>(null);
+  // Gallery position (index within image-only attachments, not the full array)
+  const [galleryOpen, setGalleryOpen] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -80,10 +87,14 @@ export function ChatPage() {
     e.preventDefault();
     if (!sessionId || !input.trim() || streaming) return;
 
+    const imageDataUris = attachments
+      .filter((a) => a.mimeType.startsWith('image/'))
+      .map((a) => `data:${a.mimeType};base64,${a.data}`);
     const userMsg: DisplayMessage = {
       id: `user-${Date.now()}`,
       role: ChatMessageRole.USER,
       content: input,
+      ...(imageDataUris.length > 0 ? { images: imageDataUris } : {}),
     };
     const agentMsg: DisplayMessage = {
       id: `agent-${Date.now()}`,
@@ -136,8 +147,17 @@ export function ChatPage() {
 
           if (eventName === 'done') break;
 
+          if (eventName === 'status') {
+            try {
+              const parsed = JSON.parse(dataLine) as { message: string };
+              setStatusMsg(parsed.message);
+            } catch { /* ignore */ }
+            continue;
+          }
+
           if (eventName === 'incident-created') {
             try {
+              setStatusMsg(null);
               const parsed = JSON.parse(dataLine) as { incidentId: string };
               setFinalized({ sessionId: sessionId!, incidentId: parsed.incidentId });
             } catch {
@@ -147,6 +167,7 @@ export function ChatPage() {
           }
 
           if (eventName === 'finalize-error') {
+            setStatusMsg(null);
             setReadyToFinalize(true);
             try {
               const parsed = JSON.parse(dataLine) as { message: string };
@@ -206,7 +227,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className="relative flex h-full flex-col bg-zinc-950">
+    <div className="relative flex h-full min-h-0 flex-col bg-zinc-950">
       {/* Mesh background */}
       <GradientMesh />
 
@@ -239,7 +260,7 @@ export function ChatPage() {
       </motion.header>
 
       {/* Messages */}
-      <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto">
+      <div ref={scrollRef} className="relative z-10 min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-3xl space-y-4 px-6 py-8">
           <AnimatePresence initial={false}>
             {messages.map((m) => (
@@ -249,6 +270,37 @@ export function ChatPage() {
               messages[messages.length - 1]?.content === '' && (
                 <TypingIndicator />
               )}
+          </AnimatePresence>
+
+          {/* Status indicator while creating incident */}
+          <AnimatePresence>
+            {statusMsg && !finalized && (
+              <motion.div
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-3 rounded-2xl border border-brand-500/20 bg-brand-500/5 px-5 py-3 backdrop-blur-sm"
+              >
+                <div className="flex gap-1">
+                  <motion.span
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 0.8, repeat: Infinity, delay: 0 }}
+                    className="h-2 w-2 rounded-full bg-brand-400"
+                  />
+                  <motion.span
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 0.8, repeat: Infinity, delay: 0.2 }}
+                    className="h-2 w-2 rounded-full bg-brand-400"
+                  />
+                  <motion.span
+                    animate={{ scale: [1, 1.3, 1] }}
+                    transition={{ duration: 0.8, repeat: Infinity, delay: 0.4 }}
+                    className="h-2 w-2 rounded-full bg-brand-400"
+                  />
+                </div>
+                <span className="text-sm text-brand-300">{statusMsg}</span>
+              </motion.div>
+            )}
           </AnimatePresence>
 
           {finalized && (
@@ -335,15 +387,35 @@ export function ChatPage() {
                   className="mb-3 flex flex-wrap gap-2"
                 >
                   {attachments.map((a, i) => (
-                    <motion.span
+                    <motion.div
                       key={i}
                       initial={{ scale: 0.8, opacity: 0 }}
                       animate={{ scale: 1, opacity: 1 }}
                       exit={{ scale: 0.8, opacity: 0 }}
-                      className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/80 px-2 py-1 text-[11px] text-zinc-300"
+                      className="group relative"
                     >
-                      <ImageIcon className="h-3 w-3 text-zinc-500" />
-                      {a.mimeType.split('/')[1] ?? 'file'}
+                      {a.mimeType.startsWith('image/') ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // find this attachment's position among image-only attachments
+                            const imgIdx = attachments
+                              .slice(0, i + 1)
+                              .filter((att) => att.mimeType.startsWith('image/')).length - 1;
+                            setGalleryOpen(imgIdx);
+                          }}
+                        >
+                          <img
+                            src={`data:${a.mimeType};base64,${a.data}`}
+                            alt="attachment"
+                            className="h-16 w-16 cursor-zoom-in rounded-lg border border-zinc-700/60 object-cover shadow-sm transition hover:border-brand-500/40 hover:shadow-brand-500/10"
+                          />
+                        </button>
+                      ) : (
+                        <div className="flex h-16 w-16 items-center justify-center rounded-lg border border-zinc-700/60 bg-zinc-900/80">
+                          <ImageIcon className="h-5 w-5 text-zinc-500" />
+                        </div>
+                      )}
                       <button
                         type="button"
                         onClick={() =>
@@ -351,11 +423,11 @@ export function ChatPage() {
                             prev.filter((_, idx) => idx !== i),
                           )
                         }
-                        className="ml-1 text-zinc-500 hover:text-red-400"
+                        className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 text-zinc-400 opacity-0 shadow-md ring-1 ring-zinc-700 transition group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400"
                       >
                         <X className="h-3 w-3" />
                       </button>
-                    </motion.span>
+                    </motion.div>
                   ))}
                 </motion.div>
               )}
@@ -400,7 +472,20 @@ export function ChatPage() {
                     void handleSubmit(e as unknown as FormEvent);
                   }
                 }}
-                placeholder="Describe the issue..."
+                onPaste={(e) => {
+                  const items = Array.from(e.clipboardData.items);
+                  const imageItems = items.filter((i) => i.type.startsWith('image/'));
+                  if (imageItems.length === 0) return;
+                  e.preventDefault();
+                  for (const item of imageItems) {
+                    const file = item.getAsFile();
+                    if (!file) continue;
+                    void fileToBase64(file).then((data) => {
+                      setAttachments((prev) => [...prev, { mimeType: file.type, data }]);
+                    });
+                  }
+                }}
+                placeholder="Describe the issue... (paste images with Ctrl+V)"
                 rows={1}
                 disabled={streaming}
                 className="flex-1 resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none"
@@ -426,6 +511,118 @@ export function ChatPage() {
           </form>
         </motion.div>
       )}
+
+      {/* Image gallery lightbox */}
+      <AnimatePresence>
+        {galleryOpen !== null && (() => {
+          const images = attachments.filter((a) => a.mimeType.startsWith('image/'));
+          const pos = Math.min(galleryOpen, images.length - 1);
+          if (images.length === 0 || pos < 0) return null;
+          const current = images[pos];
+          const hasPrev = pos > 0;
+          const hasNext = pos < images.length - 1;
+
+          return (
+            <motion.div
+              key="lightbox"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm"
+              onClick={() => setGalleryOpen(null)}
+            >
+              {/* prev */}
+              {hasPrev && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setGalleryOpen(pos - 1); }}
+                  className="absolute left-4 flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-400 ring-1 ring-zinc-700 transition hover:bg-zinc-700 hover:text-white"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+              )}
+
+              {/* image */}
+              <motion.img
+                key={pos}
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                src={`data:${current.mimeType};base64,${current.data}`}
+                alt="preview"
+                className="max-h-[85vh] max-w-[90vw] rounded-xl border border-zinc-700/60 shadow-2xl"
+                onClick={(e) => e.stopPropagation()}
+              />
+
+              {/* next */}
+              {hasNext && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setGalleryOpen(pos + 1); }}
+                  className="absolute right-16 flex h-10 w-10 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-400 ring-1 ring-zinc-700 transition hover:bg-zinc-700 hover:text-white"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              )}
+
+              {/* thumbnails strip + counter */}
+              <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+                {images.length > 1 && (
+                  <div className="flex gap-1.5 rounded-xl bg-zinc-900/80 p-1.5 ring-1 ring-zinc-700/60">
+                    {images.map((img, gIdx) => (
+                      <div key={gIdx} className="group/thumb relative">
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setGalleryOpen(gIdx); }}
+                          className={cn(
+                            'overflow-hidden rounded-lg border-2 transition',
+                            gIdx === pos
+                              ? 'border-brand-500 shadow-[0_0_10px_rgba(99,102,241,0.4)]'
+                              : 'border-transparent opacity-50 hover:opacity-100',
+                          )}
+                        >
+                          <img
+                            src={`data:${img.mimeType};base64,${img.data}`}
+                            alt=""
+                            className="h-10 w-10 object-cover"
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            // find this image's real index in the full attachments array
+                            const realIdx = attachments.findIndex((a) => a === img);
+                            setAttachments((prev) => prev.filter((_, i) => i !== realIdx));
+                            // adjust gallery position
+                            if (images.length <= 1) {
+                              setGalleryOpen(null);
+                            } else if (gIdx <= pos && pos > 0) {
+                              setGalleryOpen(gIdx === pos ? Math.min(pos, images.length - 2) : pos - 1);
+                            }
+                          }}
+                          className="absolute -right-1 -top-1 flex h-4 w-4 items-center justify-center rounded-full bg-zinc-800 text-zinc-400 opacity-0 ring-1 ring-zinc-700 transition group-hover/thumb:opacity-100 hover:bg-red-500/20 hover:text-red-400"
+                        >
+                          <X className="h-2.5 w-2.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <span className="rounded-full bg-zinc-800/80 px-3 py-0.5 text-[10px] text-zinc-500 ring-1 ring-zinc-700/60">
+                  {pos + 1} / {images.length}
+                </span>
+              </div>
+
+              {/* close */}
+              <button
+                onClick={() => setGalleryOpen(null)}
+                className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-800/80 text-zinc-400 ring-1 ring-zinc-700 transition hover:bg-zinc-700 hover:text-white"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </motion.div>
+          );
+        })()}
+      </AnimatePresence>
     </div>
   );
 }
@@ -433,7 +630,8 @@ export function ChatPage() {
 function MessageBubble({ message }: { message: DisplayMessage }) {
   const isUser = message.role === ChatMessageRole.USER;
   const visibleContent = message.content.replace(READY_TOKEN, '').trim();
-  if (!visibleContent && !message.pending) return null;
+  const hasImages = isUser && message.images && message.images.length > 0;
+  if (!visibleContent && !hasImages) return null;
 
   return (
     <motion.div
@@ -463,7 +661,21 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
             : 'border border-zinc-800 bg-zinc-900/60 text-zinc-200 shadow-sm backdrop-blur-sm',
         )}
       >
-        <div className="whitespace-pre-wrap">{visibleContent || '…'}</div>
+        {visibleContent && (
+          <div className="whitespace-pre-wrap">{visibleContent}</div>
+        )}
+        {hasImages && (
+          <div className={cn('flex flex-wrap gap-1.5', visibleContent && 'mt-2')}>
+            {message.images!.map((src, i) => (
+              <img
+                key={i}
+                src={src}
+                alt={`attachment ${i + 1}`}
+                className="h-20 w-20 rounded-lg border border-white/20 object-cover shadow-sm"
+              />
+            ))}
+          </div>
+        )}
       </div>
     </motion.div>
   );
