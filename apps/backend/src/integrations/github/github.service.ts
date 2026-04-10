@@ -242,6 +242,19 @@ export class GitHubService {
 
   // ── helpers ──────────────────────────────────────────────────────────
 
+  /**
+   * Lists commit messages for a PR. Used by the webhook service to find
+   * ticket keys in environment-to-environment merges (dev→qa, qa→main).
+   */
+  async listPrCommitMessages(prNumber: number): Promise<string[]> {
+    const owner = this.env.githubOwner;
+    const repo = this.env.githubRepo;
+    const commits = await this.request<{ commit: { message: string } }[]>(
+      `/repos/${owner}/${repo}/pulls/${prNumber}/commits?per_page=100`,
+    );
+    return commits.map((c) => c.commit.message);
+  }
+
   private async request<T = unknown>(
     path: string,
     init: RequestInit = {},

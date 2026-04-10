@@ -2,7 +2,13 @@
   "permissions": {
     "allow": [
       "Bash(ls apps/dashboard-web/tailwind.config.*)",
-      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(ts|tsx\\)$\")",
+      "Bash(node scripts/with-env.mjs npx prisma migrate dev --name audit-pipeline-actions)",
+      "Bash(node ../../scripts/with-env.mjs npx prisma migrate dev --name audit-pipeline-actions)",
+      "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma migrate dev --schema apps/backend/prisma/schema.prisma --name audit-pipeline-actions)",
+      "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma migrate dev --schema apps/backend/prisma/schema.prisma --name audit-pipeline-actions --create-only)",
+      "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma db push --schema apps/backend/prisma/schema.prisma)",
+      "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma generate --schema apps/backend/prisma/schema.prisma)"
     ]
   }
 }

@@ -662,7 +662,13 @@ function MessageBubble({ message }: { message: DisplayMessage }) {
         )}
       >
         {visibleContent && (
-          <div className="whitespace-pre-wrap">{visibleContent}</div>
+          <div className="whitespace-pre-wrap">
+            {isUser ? (
+              visibleContent
+            ) : (
+              <StreamingText text={visibleContent} />
+            )}
+          </div>
         )}
         {hasImages && (
           <div className={cn('flex flex-wrap gap-1.5', visibleContent && 'mt-2')}>
@@ -710,6 +716,24 @@ function TypingIndicator() {
         />
       </div>
     </motion.div>
+  );
+}
+
+/** Renders text word-by-word with a smooth fade-in alpha effect. */
+function StreamingText({ text }: { text: string }) {
+  const words = text.split(/(\s+)/); // keep whitespace as separate tokens
+  return (
+    <>
+      {words.map((word, i) => (
+        <span
+          key={`${i}-${word}`}
+          className="animate-word-fade"
+          style={{ animationDelay: `${Math.min(i * 30, 2000)}ms` }}
+        >
+          {word}
+        </span>
+      ))}
+    </>
   );
 }
 

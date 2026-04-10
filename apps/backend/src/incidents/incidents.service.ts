@@ -9,7 +9,7 @@ import {
 import { IncidentStatus } from '@prisma/client';
 import { ExtractedIncident } from '../chat/interfaces/extracted-incident.interface';
 import { IIncidentFromChatCreator } from '../chat/interfaces/incident-from-chat-creator.interface';
-import { NotificationEvent, Role } from '../common/enums';
+import { AuditAction, AuditActorType, NotificationEvent, Role } from '../common/enums';
 import { EnvConfig } from '../config/env.config';
 import { GitHubService } from '../integrations/github/github.service';
 import { JiraService } from '../integrations/jira/jira.service';
@@ -33,6 +33,10 @@ import {
   IncidentWithRelations,
   IncidentsRepository,
 } from './repositories/incidents.repository';
+import {
+  AUDIT_RECORDER,
+  IAuditRecorder,
+} from '../audit/interfaces/audit-recorder.interface';
 import { StorageService } from '../storage/storage.service';
 import { BranchNamingService } from './services/branch-naming.service';
 import { IncidentLinksService } from './services/incident-links.service';
@@ -63,6 +67,9 @@ export class IncidentsService implements IIncidentFromChatCreator {
     private readonly links: IncidentLinksService,
     private readonly env: EnvConfig,
     private readonly storage: StorageService,
+    @Optional()
+    @Inject(AUDIT_RECORDER)
+    private readonly audit?: IAuditRecorder,
     @Optional()
     @Inject(INCIDENT_NOTIFIER)
     private readonly notifier?: IIncidentNotifier,
@@ -158,6 +165,15 @@ export class IncidentsService implements IIncidentFromChatCreator {
       chatSession: { connect: { id: args.chatSessionId } },
     });
 
+    // AUDIT: intake finalized
+    await this.audit?.record({
+      actorType: AuditActorType.SRE_AGENT,
+      action: AuditAction.INTAKE_FINALIZED,
+      entity: 'Incident',
+      entityId: created.id,
+      metadata: { title: created.title, service: created.service, priority: priority.name, reporterEmail: args.reporterEmail },
+    });
+
     // 3. Embed + similarity search (run after persisting so the new incident
     //    is excluded from its own neighbors). The candidates list is hoisted
     //    so the Jira-comment step below can use it without re-querying.
@@ -223,6 +239,21 @@ export class IncidentsService implements IIncidentFromChatCreator {
       priority: { connect: { id: triagePriorityId } },
     });
 
+    // AUDIT: triage completed
+    if (triage) {
+      await this.audit?.record({
+        actorType: AuditActorType.SRE_AGENT,
+        action: AuditAction.TRIAGE_COMPLETED,
+        entity: 'Incident',
+        entityId: created.id,
+        metadata: {
+          rootCause: triage.rootCause,
+          assignedPriority: triage.assignedPriorityName,
+          affectedComponents: triage.affectedComponents,
+        },
+      });
+    }
+
     // 6. Create Jira ticket
     try {
       const issue = await this.jira.createTicket({
@@ -232,6 +263,15 @@ export class IncidentsService implements IIncidentFromChatCreator {
       withTriage = await this.repo.update(withTriage.id, {
         jiraTicketKey: issue.key,
         jiraTicketUrl: `${this.envBaseUrl()}/browse/${issue.key}`,
+      });
+
+      // AUDIT: Jira ticket created
+      await this.audit?.record({
+        actorType: AuditActorType.SRE_AGENT,
+        action: AuditAction.JIRA_TICKET_CREATED,
+        entity: 'Incident',
+        entityId: created.id,
+        metadata: { jiraKey: issue.key, jiraUrl: `${this.envBaseUrl()}/browse/${issue.key}` },
       });
     } catch (err) {
       this.logger.error(
@@ -269,6 +309,15 @@ export class IncidentsService implements IIncidentFromChatCreator {
         await this.github.createBranch(branchName, baseBranch);
         withTriage = await this.repo.update(withTriage.id, {
           githubBranch: branchName,
+        });
+
+        // AUDIT: GitHub branch created
+        await this.audit?.record({
+          actorType: AuditActorType.SRE_AGENT,
+          action: AuditAction.GITHUB_BRANCH_CREATED,
+          entity: 'Incident',
+          entityId: created.id,
+          metadata: { branch: branchName, baseBranch },
         });
       } catch (err) {
         this.logger.error(
@@ -339,6 +388,16 @@ export class IncidentsService implements IIncidentFromChatCreator {
         .dispatch({
           incidentId: withTriage.id,
           event: NotificationEvent.INCIDENT_CREATED,
+        })
+        .then(() => {
+          // AUDIT: notification sent
+          void this.audit?.record({
+            actorType: AuditActorType.SRE_AGENT,
+            action: AuditAction.NOTIFICATION_SENT,
+            entity: 'Incident',
+            entityId: created.id,
+            metadata: { event: NotificationEvent.INCIDENT_CREATED, channels: ['email', 'slack'] },
+          });
         })
         .catch((err) =>
           this.logger.error(

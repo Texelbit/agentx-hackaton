@@ -351,6 +351,27 @@ function auditSummary(row: AuditRow): string {
     const branch = meta?.branch ? ` on ${meta.branch}` : '';
     return `${before.status} → ${after.status}${via}${branch}`;
   }
+  if (row.action === 'INTAKE_FINALIZED') {
+    return `Intake finalized → "${meta?.title ?? '?'}" (${meta?.priority ?? '?'})`;
+  }
+  if (row.action === 'TRIAGE_COMPLETED') {
+    return `Triage completed → priority ${meta?.assignedPriority ?? '?'}, root cause identified`;
+  }
+  if (row.action === 'JIRA_TICKET_CREATED') {
+    return `Jira ticket created → ${meta?.jiraKey ?? '?'}`;
+  }
+  if (row.action === 'GITHUB_BRANCH_CREATED') {
+    return `Branch created → ${meta?.branch ?? '?'} from ${meta?.baseBranch ?? '?'}`;
+  }
+  if (row.action === 'NOTIFICATION_SENT') {
+    return `Team notified via ${meta?.channels ?? 'email + slack'}`;
+  }
+  if (row.action === 'ATTACHMENT_UPLOADED') {
+    return `Attachment uploaded to GCS`;
+  }
+  if (row.action === 'INCIDENT_RESOLVED') {
+    return `Incident resolved — resolution email sent`;
+  }
   if (row.action === 'CREATE') return `Created ${row.entity.toLowerCase()}`;
   if (row.action === 'UPDATE') return `Updated ${row.entity.toLowerCase()}`;
   if (row.action === 'DELETE') return `Deleted ${row.entity.toLowerCase()}`;
@@ -488,7 +509,14 @@ function IncidentPreviewModal({
 
 /** All known action values for the filter dropdown. */
 const AUDIT_ACTIONS = [
+  'INTAKE_FINALIZED',
+  'TRIAGE_COMPLETED',
+  'JIRA_TICKET_CREATED',
+  'GITHUB_BRANCH_CREATED',
+  'NOTIFICATION_SENT',
+  'ATTACHMENT_UPLOADED',
   'STATUS_CHANGE',
+  'INCIDENT_RESOLVED',
   'CREATE',
   'UPDATE',
   'DELETE',
