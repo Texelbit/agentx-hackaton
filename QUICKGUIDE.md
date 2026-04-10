@@ -79,8 +79,9 @@ GCP_BUCKET_NAME=agentx-storage
 GOOGLE_APPLICATION_CREDENTIALS=./.keys/gcp-credentials.json
 
 # Super admin (created by the bootstrap seed)
-SUPER_ADMIN_EMAIL=admin@example.com
-SUPER_ADMIN_PASSWORD=ChangeMe123!
+BOOTSTRAP_ADMIN_EMAIL=admin@example.com
+BOOTSTRAP_ADMIN_PASSWORD=ChangeMe123!
+BOOTSTRAP_ADMIN_FULL_NAME=System Super Admin
 ```
 
 > 📖 Every variable is documented inline in [`.env.example`](.env.example).
@@ -89,7 +90,23 @@ SUPER_ADMIN_PASSWORD=ChangeMe123!
 
 ---
 
-## 3. One-shot boot
+## 3. Boot the system
+
+### Option A — Docker (recommended for judges)
+
+```bash
+docker compose up --build
+```
+
+This builds 3 containers (backend, dashboard, report-web), runs migrations, seeds, and starts everything. First boot takes ~2 minutes (indexer clones and embeds the reference codebase).
+
+| Service | URL |
+|---|---|
+| Backend API + Swagger | http://localhost:3000 (redirects to /api/docs) |
+| Dashboard (admin/ops) | http://localhost:5174 |
+| Report chat (reporters) | http://localhost:5173 |
+
+### Option B — Local dev (Node.js)
 
 ```bash
 npm run init
@@ -111,11 +128,17 @@ This runs [`scripts/init.mjs`](scripts/init.mjs) — a 13-step orchestrator that
 12. **Seeds the indexer** — clones the configured repo, chunks it, embeds it into pgvector
 13. Prints a success banner with next steps
 
+Then start 3 processes:
+
+```bash
+npm run dev:backend      # http://localhost:3000
+npm run dev:dashboard    # http://localhost:5174
+npm run dev:report       # http://localhost:5173
+```
+
 ---
 
-## 4. Run the apps
-
-Three processes, three terminals:
+## 4. Verification
 
 ```bash
 npm run dev:backend      # NestJS API → http://localhost:3000
