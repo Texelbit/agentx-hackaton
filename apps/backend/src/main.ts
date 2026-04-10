@@ -73,6 +73,14 @@ async function bootstrap(): Promise<void> {
     customSiteTitle: 'SRE Agent — API Docs',
   });
 
+  // Redirect root to Swagger UI
+  app.use('/', (req: Request, res: Response, next: NextFunction) => {
+    if (req.path === '/' || req.path === '') {
+      return res.redirect('/api/docs');
+    }
+    next();
+  });
+
   await app.listen(env.port);
   logger.log(`Backend listening on port ${env.port}`);
   logger.log(`Swagger UI available at http://localhost:${env.port}/api/docs`);

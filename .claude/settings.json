@@ -8,7 +8,11 @@
       "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma migrate dev --schema apps/backend/prisma/schema.prisma --name audit-pipeline-actions)",
       "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma migrate dev --schema apps/backend/prisma/schema.prisma --name audit-pipeline-actions --create-only)",
       "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma db push --schema apps/backend/prisma/schema.prisma)",
-      "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma generate --schema apps/backend/prisma/schema.prisma)"
+      "Bash(node scripts/with-env.mjs npx --prefix apps/backend prisma generate --schema apps/backend/prisma/schema.prisma)",
+      "Bash(head -5 docker-compose.yml)",
+      "Bash(head -3 LICENSE)",
+      "Bash(docker compose:*)",
+      "Bash(docker run:*)"
     ]
   }
 }

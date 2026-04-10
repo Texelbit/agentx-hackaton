@@ -2,6 +2,14 @@
 
 > **AgentX Hackathon 2026** — An autonomous multi-agent system that turns free-form incident reports from non-technical users into fully-triaged Jira tickets, GitHub branches, and team notifications — end to end, in under a minute.
 
+## Solution introduction
+
+The SRE Incident Response Agent is an autonomous multi-agent system that eliminates the manual burden of incident triage. Non-technical users describe problems in plain language through a conversational chat interface, optionally pasting screenshots. The system's IntakeAgent gathers context, auto-finalizes, and triggers a pipeline that triages via RAG-grounded AI, creates a structured Jira ticket with attached evidence, opens a GitHub branch, and notifies the on-call team via email and Slack — all in under 30 seconds.
+
+What sets this solution apart is its end-to-end lifecycle automation. A configurable GitOps state machine tracks GitHub events (push, PR, merge) across environment branches (dev → qa → main) and automatically transitions both the internal incident and the Jira ticket through their respective workflows. When the fix reaches production, the EmailComposerAgent sends a personalized resolution notification to the original reporter. The entire pipeline is observable through a structured audit log covering every stage from intake to resolution.
+
+The system is built for configurability: LLM providers are swappable at runtime from the admin dashboard, GitOps rules are drag-and-drop reorderable, and Jira integration is language-agnostic (works in any locale). Built with NestJS, React, Prisma, pgvector, Google Gemini 2.5 Pro, and Google Cloud Storage.
+
 [![Built with NestJS](https://img.shields.io/badge/backend-NestJS_10-e0234e)](https://nestjs.com)
 [![React 18](https://img.shields.io/badge/frontend-React_18_+_Vite-61dafb)](https://react.dev)
 [![Prisma](https://img.shields.io/badge/ORM-Prisma_5-2d3748)](https://prisma.io)
@@ -16,8 +24,9 @@
 |---|---|
 | **[QUICKGUIDE.md](QUICKGUIDE.md)** | One-command setup, `.env` walkthrough, verification, pre-built test scenario |
 | **[AGENTS_USE.md](AGENTS_USE.md)** | Deep dive on every agent, orchestration, context engineering, security, observability |
+| **[SCALING.md](SCALING.md)** | How the system scales, assumptions, bottlenecks, horizontal scaling plan |
 | **[HANDOFF.md](HANDOFF.md)** | Full technical handoff — module map, IoC bridges, design patterns, integration setup |
-| **🎥 Demo video** | _TBD — link added before submission_ |
+| **🎥 [Demo video](https://www.youtube.com/watch?v=YOUR_VIDEO_ID)** | 3-min demo of the full E2E flow |
 
 ---
 

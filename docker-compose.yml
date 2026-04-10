@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   backend:
     build:
@@ -10,6 +8,28 @@ services:
       - '3000:3000'
     env_file:
       - .env
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard-web/Dockerfile
+    container_name: sre-agent-dashboard
+    ports:
+      - '5174:80'
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  report:
+    build:
+      context: .
+      dockerfile: apps/report-web/Dockerfile
+    container_name: sre-agent-report
+    ports:
+      - '5173:80'
+    depends_on:
+      - backend
     restart: unless-stopped
 
 # Postgres is provided by Supabase (external) — no local DB container needed.
